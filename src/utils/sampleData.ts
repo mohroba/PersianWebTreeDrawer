@@ -90,7 +90,7 @@ export const FAMILY_TREE_TEMPLATE_FA: TreeDocument = {
     headerFit: 'contain',
     footerFit: 'contain',
     headerText: 'شجره‌نامه خانوادگی ما',
-    footerText: 'نمودار تبارشناسی — طراحی شده با TreeSketch'
+    footerText: 'نمودار تبارشناسی — طراحی شده با رابوک'
   },
   nodes: [
     { id: 'gp1', label: 'آقای بزرگ خاندان', subLabel: '۱۲۸۸ - ۱۳۷۲', x: 250, y: 30, width: 140, height: 45, fontSize: 13, textAlign: 'center', style: 'pill' },
@@ -151,7 +151,7 @@ export const BLANK_TEMPLATE_FA: TreeDocument = {
     headerFit: 'contain',
     footerFit: 'contain',
     headerText: 'نمودار درختی جدید',
-    footerText: 'طراحی شده با TreeSketch'
+    footerText: 'طراحی شده با رابوک'
   },
   nodes: [
     { id: 'node-1', label: 'گره جدید', subLabel: 'دو بار کلیک برای ویرایش متن', x: 230, y: 100, width: 130, height: 45, fontSize: 13, textAlign: 'center', style: 'rectangle' }

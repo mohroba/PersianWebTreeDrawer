@@ -276,6 +276,7 @@ export const EdgeElement: React.FC<EdgeElementProps> = ({
   isSelected,
   onClick
 }) => {
+  const { deleteSelected } = useTree();
   // Let's compute attachment centers.
   // We can attach to bottom center of 'from' and top center of 'to' 
   // or dynamically pick the closest sides! Let's do bottom-to-top attachment which makes perfect sense for trees.
@@ -296,22 +297,13 @@ export const EdgeElement: React.FC<EdgeElementProps> = ({
 
   return (
     <g onClick={onClick} className="cursor-pointer group">
-      {/* Thicker transparent interactive path area to make clicking easier */}
-      <path
-        d={pathString}
-        fill="none"
-        stroke="transparent"
-        strokeWidth={10}
-        className="no-print pointer-events-auto"
-      />
-      
-      {/* Actual drawn relation line */}
+      {/* Actual drawn relation line - pointer-events-none so it doesn't cause hit-test flickering */}
       <path
         d={pathString}
         fill="none"
         stroke={isSelected ? '#3b82f6' : 'black'}
         strokeWidth={isSelected ? edge.strokeWidth + 1 : edge.strokeWidth}
-        className="transition-all"
+        className="transition-all pointer-events-none"
       />
 
       {/* Relation marker overlay in editing mode on hover */}
@@ -319,8 +311,17 @@ export const EdgeElement: React.FC<EdgeElementProps> = ({
         d={pathString}
         fill="none"
         stroke="#4f46e5"
-        strokeWidth={edge.strokeWidth + 2}
+        strokeWidth={edge.strokeWidth + 3}
         className="no-print opacity-0 group-hover:opacity-30 pointer-events-none transition-opacity"
+      />
+
+      {/* Thicker transparent interactive path area to capture hover and clicks consistently (placed on top for robust capture) */}
+      <path
+        d={pathString}
+        fill="none"
+        stroke="transparent"
+        strokeWidth={14}
+        className="no-print pointer-events-auto"
       />
 
       {/* Delete connection prompt indicator on selection */}
@@ -332,7 +333,13 @@ export const EdgeElement: React.FC<EdgeElementProps> = ({
           height={24}
           className="no-print"
         >
-          <div className="bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg w-5 h-5 cursor-pointer hover:bg-red-600 transition-colors">
+          <div 
+            onClick={(e) => {
+              e.stopPropagation();
+              deleteSelected();
+            }}
+            className="bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg w-5 h-5 cursor-pointer hover:bg-red-600 transition-colors"
+          >
             <Trash2 size={11} />
           </div>
         </foreignObject>

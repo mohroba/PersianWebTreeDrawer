@@ -15,7 +15,29 @@ export interface PageConfig {
   headerFit: ImageFit;
   footerFit: ImageFit;
   headerText?: string;
+  headerSubText?: string;
   footerText?: string;
+  footerSubText?: string;
+  headerScale?: number;
+  headerOffsetX?: number;
+  headerOffsetY?: number;
+  footerScale?: number;
+  footerOffsetX?: number;
+  footerOffsetY?: number;
+  headerTextOffsetX?: number;
+  headerTextOffsetY?: number;
+  footerTextOffsetX?: number;
+  footerTextOffsetY?: number;
+  headerTextWidth?: number;
+  headerTextHeight?: number;
+  headerTextColor?: string;
+  headerTextFont?: string;
+  headerTextSize?: number;
+  footerTextWidth?: number;
+  footerTextHeight?: number;
+  footerTextColor?: string;
+  footerTextFont?: string;
+  footerTextSize?: number;
 }
 
 export interface TreeNode {
