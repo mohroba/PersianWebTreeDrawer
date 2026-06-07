@@ -23,14 +23,29 @@ export const NodeElement: React.FC<NodeElementProps> = ({
   onResizeTouchStart
 }) => {
   const { 
+    document,
     connectingFromId, 
     startConnection, 
     completeConnection, 
     updateNode,
     deleteSelected
   } = useTree();
+  const { nodes } = document;
   
   const [isHovered, setIsHovered] = useState(false);
+
+  // Compute footnote index
+  const hasFootnote = !!node.footnote && node.footnote.trim().length > 0;
+  let footnoteIndex = -1;
+  if (hasFootnote) {
+    const nodesWithFootnotes = nodes.filter(n => n.footnote && n.footnote.trim().length > 0)
+      .sort((a, b) => {
+        // Sort geographically top-to-bottom, left-to-right
+        if (Math.abs(a.y - b.y) > 20) return a.y - b.y;
+        return a.x - b.x;
+      });
+    footnoteIndex = nodesWithFootnotes.findIndex(n => n.id === node.id) + 1;
+  }
 
   const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -41,11 +56,18 @@ export const NodeElement: React.FC<NodeElementProps> = ({
     }
   };
 
+  const pageDefaults = document.page;
+  const nodeStyle = node.style || pageDefaults.defaultNodeStyle || 'rectangle';
+  const nodeBorderColor = pageDefaults.defaultNodeColor || '#000000';
+  const nodeBgColor = pageDefaults.defaultNodeBgColor || '#ffffff';
+  const nodeTextColor = node.fontColor || pageDefaults.defaultNodeTextColor || '#000000';
+  const fontFam = node.fontFamily || pageDefaults.defaultFontFamily || 'inherit';
+
   const drawNodeShape = () => {
     const strokeWidth = isSelected ? 2 : 1.5;
-    const strokeColor = isSelected ? '#3b82f6' : 'black'; // editor selection color, print is forced black
+    const strokeColor = isSelected ? '#3b82f6' : nodeBorderColor;
 
-    switch (node.style) {
+    switch (nodeStyle) {
       case 'pill':
         return (
           <rect
@@ -53,8 +75,8 @@ export const NodeElement: React.FC<NodeElementProps> = ({
             height={node.height}
             rx={node.height / 2}
             ry={node.height / 2}
-            fill="white"
-            stroke="black"
+            fill={nodeBgColor}
+            stroke={strokeColor}
             strokeWidth={strokeWidth}
             className="transition-colors"
           />
@@ -67,8 +89,8 @@ export const NodeElement: React.FC<NodeElementProps> = ({
               height={node.height}
               rx={6}
               ry={6}
-              fill="white"
-              stroke="black"
+              fill={nodeBgColor}
+              stroke={strokeColor}
               strokeWidth={strokeWidth}
             />
             {/* Double inline decorative border for editorial lookup card */}
@@ -80,7 +102,7 @@ export const NodeElement: React.FC<NodeElementProps> = ({
               rx={4}
               ry={4}
               fill="none"
-              stroke="black"
+              stroke={strokeColor}
               strokeWidth={0.5}
               strokeDasharray="2 2"
             />
@@ -91,7 +113,7 @@ export const NodeElement: React.FC<NodeElementProps> = ({
           <rect
             width={node.width}
             height={node.height}
-            fill="none"
+            fill="transparent"
             stroke="none"
           />
         );
@@ -101,8 +123,8 @@ export const NodeElement: React.FC<NodeElementProps> = ({
           <rect
             width={node.width}
             height={node.height}
-            fill="white"
-            stroke="black"
+            fill={nodeBgColor}
+            stroke={strokeColor}
             strokeWidth={strokeWidth}
           />
         );
@@ -123,6 +145,11 @@ export const NodeElement: React.FC<NodeElementProps> = ({
   const hasSubLabel = !!node.subLabel;
   const mainLabelY = hasSubLabel ? (node.height / 2 - 6) : (node.height / 2);
   const subLabelY = node.height / 2 + 12;
+
+  const color = nodeTextColor;
+  const weight = node.fontBold ? 'bold' : '500';
+  const style = node.fontItalic ? 'italic' : 'normal';
+  const underline = node.fontUnderline ? 'underline' : 'none';
 
   return (
     <g
@@ -154,11 +181,19 @@ export const NodeElement: React.FC<NodeElementProps> = ({
         dy={hasSubLabel ? '0.35em' : '0.3em'}
         textAnchor={textAnchor}
         fontSize={node.fontSize}
-        fontWeight="500"
-        fill="black"
-        className="select-none pointer-events-none font-sans"
+        fontWeight={weight}
+        fontStyle={style}
+        textDecoration={underline}
+        fill={color}
+        style={{ fontFamily: fontFam }}
+        className="select-none pointer-events-none"
       >
         {node.label || 'Empty Node'}
+        {hasFootnote && (
+          <tspan dy="-0.5em" fontSize={Math.max(8, node.fontSize - 4)} fill="#4f46e5" fontWeight="bold">
+            {' [' + footnoteIndex + ']'}
+          </tspan>
+        )}
       </text>
 
       {hasSubLabel && (
@@ -168,8 +203,12 @@ export const NodeElement: React.FC<NodeElementProps> = ({
           dy="0.3em"
           textAnchor={textAnchor}
           fontSize={node.fontSize - 2}
-          fill="#555555"
-          className="select-none pointer-events-none font-sans italic opacity-90"
+          fontWeight={node.fontBold ? 'bold' : 'normal'}
+          fontStyle={node.fontItalic ? 'italic' : 'normal'}
+          textDecoration={node.fontUnderline ? 'underline' : 'none'}
+          fill={color === 'black' ? '#555555' : color}
+          style={{ fontFamily: fontFam }}
+          className="select-none pointer-events-none italic opacity-90"
         >
           {node.subLabel}
         </text>
@@ -207,27 +246,41 @@ export const NodeElement: React.FC<NodeElementProps> = ({
         />
       )}
 
-      {/* Editor Controls: Manual connection connector & delete shortcut handle, visible on hover */}
-      {!isConnectingActive && isHovered && (
+      {/* Editor Controls: Manual connection connector & delete shortcut handle, visible on hover or selection */}
+      {!isConnectingActive && (isHovered || isSelected) && (
         <g className="no-print">
-          {/* Connector handle on Right side */}
+          {/* Connector handle on Right side - the "plus" icon */}
           <g
-            transform={`translate(${node.width + 8}, ${node.height / 2})`}
-            className="cursor-crosshair pointer-events-auto transition-transform hover:scale-125"
+            transform={`translate(${node.width + 12}, ${node.height / 2})`}
+            className="cursor-crosshair pointer-events-auto transition-transform hover:scale-110"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              startConnection(node.id);
+            }}
             onClick={(e) => {
               e.stopPropagation();
               startConnection(node.id);
             }}
             title="Drag line from here to connect"
           >
-            <circle r={7} fill="#10b981" stroke="white" strokeWidth={1} />
-            <path d="M-3 0 H3 M0 -3 V3" stroke="white" strokeWidth={1.5} />
+            {/* Background invisible circle for larger hit area */}
+            <circle r={18} fill="transparent" />
+            <circle r={9} fill="#4f46e5" stroke="white" strokeWidth={1} className="shadow-sm" />
+            <path d="M-4 0 H4 M0 -4 V4" stroke="white" strokeWidth={2} />
           </g>
 
           {/* Connected target port on Left side */}
           <g
-            transform={`translate(${-8}, ${node.height / 2})`}
+            transform={`translate(${-12}, ${node.height / 2})`}
             className="cursor-crosshair pointer-events-auto"
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              if (connectingFromId) {
+                completeConnection(node.id);
+              } else {
+                startConnection(node.id);
+              }
+            }}
             onClick={(e) => {
               e.stopPropagation();
               if (connectingFromId) {
@@ -237,7 +290,9 @@ export const NodeElement: React.FC<NodeElementProps> = ({
               }
             }}
           >
-            <circle r={5} fill="#4f46e5" stroke="white" strokeWidth={1} />
+            {/* Background invisible circle for larger hit area */}
+            <circle r={18} fill="transparent" />
+            <circle r={6} fill="#10b981" stroke="white" strokeWidth={1} />
           </g>
         </g>
       )}

@@ -42,7 +42,7 @@ interface TreeContextType {
   clearSelection: () => void;
   
   // Node Actions
-  addNode: (x?: number, y?: number) => void;
+  addNode: (x?: number, y?: number, customId?: string, customLabel?: string) => void;
   updateNode: (id: string, updates: Partial<TreeNode>) => void;
   deleteSelected: () => void;
   
@@ -50,6 +50,7 @@ interface TreeContextType {
   startConnection: (fromId: string) => void;
   completeConnection: (toId: string) => void;
   cancelConnection: () => void;
+  addEdge: (fromId: string, toId: string) => void;
   updateEdgeType: (id: string, type: EdgeType) => void;
   updateEdgeWidth: (id: string, strokeWidth: number) => void;
   
@@ -168,9 +169,21 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Ref to hold the latest document status to prevent circular state dependencies
   const documentRef = useRef<TreeDocument>(document);
+  const projectsRef = useRef<Project[]>(projects);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
 
   useEffect(() => {
     documentRef.current = document;
+
+    // Check if the current project actually exists in projects list before saving
+    const projectExists = projectsRef.current.some((p) => p.id === currentProjectId);
+    if (!projectExists && projectsRef.current.length > 0) {
+      return;
+    }
+
     // Auto-save active document
     try {
       localStorage.setItem(`treesketch_project_doc_${currentProjectId}`, JSON.stringify(document));
@@ -240,11 +253,11 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setConnectingFromId(null);
   }, []);
 
-  const addNode = useCallback((x = 150, y = 150) => {
-    const newId = `node-${Date.now()}`;
+  const addNode = useCallback((x = 150, y = 150, customId?: string, customLabel?: string) => {
+    const newId = customId || `node-${Date.now()}`;
     const newNode: TreeNode = {
       id: newId,
-      label: 'New Node',
+      label: customLabel || 'New Node',
       subLabel: 'Sub description',
       x: gridSnap ? Math.round(x / gridSize) * gridSize : x,
       y: gridSnap ? Math.round(y / gridSize) * gridSize : y,
@@ -252,7 +265,7 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       height: 45,
       fontSize: 12,
       textAlign: 'center',
-      style: 'rectangle'
+      style: documentRef.current?.page?.defaultNodeStyle || 'rectangle'
     };
 
     setDocumentAndHistory({
@@ -343,6 +356,28 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const cancelConnection = useCallback(() => {
     setConnectingFromId(null);
   }, []);
+
+  const addEdge = useCallback((fromId: string, toId: string) => {
+    // Check if edge already exists
+    const exists = documentRef.current.edges.some(
+      (e) => (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId)
+    );
+
+    if (exists) return;
+
+    const newEdge: TreeEdge = {
+      id: `edge-${Date.now()}`,
+      from: fromId,
+      to: toId,
+      type: 'elbow',
+      strokeWidth: 1.5
+    };
+
+    setDocumentAndHistory({
+      ...documentRef.current,
+      edges: [...documentRef.current.edges, newEdge]
+    });
+  }, [setDocumentAndHistory]);
 
   const updateEdgeType = useCallback((id: string, type: EdgeType) => {
     setDocumentAndHistory({
@@ -561,6 +596,7 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         startConnection,
         completeConnection,
         cancelConnection,
+        addEdge,
         updateEdgeType,
         updateEdgeWidth,
         

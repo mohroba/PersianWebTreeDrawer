@@ -23,7 +23,7 @@ export const downloadFile = (content: string, fileName: string, contentType: str
  */
 export const generateFullPageSVG = (documentData: TreeDocument, svgElement: SVGSVGElement): SVGSVGElement => {
   const { size, orientation } = documentData.page;
-  const { width, height } = getPageSizePx(size, orientation);
+  const { width, height } = getPageSizePx(size, orientation, documentData.page);
 
   const fullSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   fullSvg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
@@ -57,6 +57,23 @@ export const generateFullPageSVG = (documentData: TreeDocument, svgElement: SVGS
     });
   }
   fullSvg.appendChild(defs);
+
+  // Helper for multi-line text
+  const addMultiLineText = (group: SVGGElement, text: string, x: number, startY: number, fontSize: number, fill: string, fontFam: string, bold: boolean, align: string) => {
+    const lines = text.split('\\n');
+    lines.forEach((line, idx) => {
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.textContent = line;
+      txt.setAttribute('text-anchor', align);
+      txt.setAttribute('y', (startY + idx * (fontSize * 1.2)).toString());
+      txt.setAttribute('font-family', fontFam);
+      txt.setAttribute('font-size', `${fontSize}px`);
+      if (bold) txt.setAttribute('font-weight', 'bold');
+      txt.setAttribute('fill', fill);
+      group.appendChild(txt);
+    });
+    return lines.length;
+  };
 
   // 1. Header Group
   const headerHeight = documentData.page.headerHeight || 80;
@@ -110,26 +127,11 @@ export const generateFullPageSVG = (documentData: TreeDocument, svgElement: SVGS
   const hColor = documentData.page.headerTextColor || '#000000';
   const hFont = documentData.page.headerTextFont || 'sans-serif';
 
-  const titleNode = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  titleNode.textContent = documentData.page.headerText ?? 'FAMILY TREE CHART';
-  titleNode.setAttribute('text-anchor', 'middle');
-  titleNode.setAttribute('y', (-hSize / 4).toString());
-  titleNode.setAttribute('font-family', hFont);
-  titleNode.setAttribute('font-size', `${hSize}px`);
-  titleNode.setAttribute('font-weight', 'bold');
-  titleNode.setAttribute('fill', hColor);
-  headerTextGroup.appendChild(titleNode);
+  const headerLinesCount = addMultiLineText(headerTextGroup, documentData.page.headerText ?? 'FAMILY TREE CHART', 0, -hSize / 4, hSize, hColor, hFont, true, 'middle');
 
   const subSize = Math.max(9, hSize * 0.6);
-  const subNode = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  subNode.textContent = documentData.page.headerSubText ?? 'Genealogy & Org Relations Line-only Sheet';
-  subNode.setAttribute('text-anchor', 'middle');
-  subNode.setAttribute('y', (hSize * 0.8 + 4).toString());
-  subNode.setAttribute('font-family', hFont);
-  subNode.setAttribute('font-size', `${subSize}px`);
-  subNode.setAttribute('fill', hColor === '#000000' ? '#64748b' : hColor);
-  subNode.setAttribute('opacity', '0.75');
-  headerTextGroup.appendChild(subNode);
+  const startSubY = -hSize / 4 + headerLinesCount * (hSize * 1.2) + 4;
+  addMultiLineText(headerTextGroup, documentData.page.headerSubText ?? '', 0, startSubY, subSize, hColor === '#000000' ? '#64748b' : hColor, hFont, false, 'middle');
 
   headerGroup.appendChild(headerTextGroup);
   fullSvg.appendChild(headerGroup);
@@ -147,6 +149,51 @@ export const generateFullPageSVG = (documentData: TreeDocument, svgElement: SVGS
       centralGroup.appendChild(child.cloneNode(true));
     }
   });
+
+  // Render footnotes directly
+  const footnotes = documentData.nodes
+    .filter(n => n.footnote && n.footnote.trim().length > 0)
+    .sort((a, b) => {
+      if (Math.abs(a.y - b.y) > 20) return a.y - b.y;
+      return a.x - b.x;
+    });
+
+  if (footnotes.length > 0) {
+    const fnGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    
+    // Draw top separator
+    const sep = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    sep.setAttribute('x1', '24');
+    sep.setAttribute('y1', '0');
+    // We make a short 200px separator
+    sep.setAttribute('x2', '224');
+    sep.setAttribute('y2', '0');
+    sep.setAttribute('stroke', '#000000');
+    sep.setAttribute('stroke-width', '0.5');
+    fnGroup.appendChild(sep);
+
+    let currentY = 12;
+    footnotes.forEach((node, idx) => {
+      const textNode = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      textNode.setAttribute('x', '24');
+      textNode.setAttribute('y', currentY.toString());
+      textNode.setAttribute('font-family', 'sans-serif');
+      textNode.setAttribute('font-size', '9');
+      textNode.setAttribute('fill', '#333333');
+      textNode.textContent = `[${idx + 1}] ${node.footnote}`;
+      fnGroup.appendChild(textNode);
+      currentY += 12;
+    });
+
+    // Translate to the bottom of central view
+    const footerHeight = documentData.page.footerHeight || 80;
+    const availableCentralHeight = height - headerHeight - footerHeight;
+    const fnGroupHeight = currentY + 12;
+    fnGroup.setAttribute('transform', `translate(0, ${availableCentralHeight - fnGroupHeight})`);
+    
+    centralGroup.appendChild(fnGroup);
+  }
+
   fullSvg.appendChild(centralGroup);
 
   // 3. Footer Group
@@ -202,26 +249,11 @@ export const generateFullPageSVG = (documentData: TreeDocument, svgElement: SVGS
   const fColor = documentData.page.footerTextColor || '#000000';
   const fFont = documentData.page.footerTextFont || 'sans-serif';
 
-  const ftitleNode = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  ftitleNode.textContent = documentData.page.footerText ?? 'طراحی شده با رابوک';
-  ftitleNode.setAttribute('text-anchor', 'middle');
-  ftitleNode.setAttribute('y', (-fSize / 4).toString());
-  ftitleNode.setAttribute('font-family', fFont);
-  ftitleNode.setAttribute('font-size', `${fSize}px`);
-  ftitleNode.setAttribute('font-weight', 'bold');
-  ftitleNode.setAttribute('fill', fColor);
-  footerTextGroup.appendChild(ftitleNode);
+  const footerLinesCount = addMultiLineText(footerTextGroup, documentData.page.footerText ?? 'طراحی شده با رابوک', 0, -fSize / 4, fSize, fColor, fFont, true, 'middle');
 
   const fsubSize = Math.max(9, fSize * 0.7);
-  const fsubNode = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  fsubNode.textContent = documentData.page.footerSubText ?? '© 2026';
-  fsubNode.setAttribute('text-anchor', 'middle');
-  fsubNode.setAttribute('y', (fSize * 0.8 + 4).toString());
-  fsubNode.setAttribute('font-family', fFont);
-  fsubNode.setAttribute('font-size', `${fsubSize}px`);
-  fsubNode.setAttribute('fill', fColor === '#000000' ? '#64748b' : fColor);
-  fsubNode.setAttribute('opacity', '0.75');
-  footerTextGroup.appendChild(fsubNode);
+  const fsubStartY = -fSize / 4 + footerLinesCount * (fSize * 1.2) + 4;
+  addMultiLineText(footerTextGroup, documentData.page.footerSubText ?? '© 2026', 0, fsubStartY, fsubSize, fColor === '#000000' ? '#64748b' : fColor, fFont, false, 'middle');
 
   footerGroup.appendChild(footerTextGroup);
   fullSvg.appendChild(footerGroup);
@@ -263,7 +295,7 @@ export const exportToPNG = (documentData: TreeDocument, svgElement: SVGSVGElemen
   }
 
   const { size, orientation } = documentData.page;
-  const { width, height } = getPageSizePx(size, orientation);
+  const { width, height } = getPageSizePx(size, orientation, documentData.page);
 
   const fullSvg = generateFullPageSVG(documentData, svgElement);
   const serializer = new XMLSerializer();

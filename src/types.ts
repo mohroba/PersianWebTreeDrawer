@@ -1,4 +1,4 @@
-export type PageSize = 'A4' | 'A3' | 'Letter' | 'Legal';
+export type PageSize = 'A4' | 'A3' | 'Letter' | 'Legal' | 'A5' | 'B5' | 'Custom';
 export type Orientation = 'portrait' | 'landscape';
 export type ImageFit = 'contain' | 'cover' | 'stretch';
 export type EdgeType = 'straight' | 'elbow';
@@ -6,6 +6,8 @@ export type NodeStyle = 'rectangle' | 'text-only' | 'pill' | 'card';
 
 export interface PageConfig {
   size: PageSize;
+  customWidth?: number;
+  customHeight?: number;
   orientation: Orientation;
   margin: number;
   headerHeight: number;
@@ -26,8 +28,6 @@ export interface PageConfig {
   footerOffsetY?: number;
   headerTextOffsetX?: number;
   headerTextOffsetY?: number;
-  footerTextOffsetX?: number;
-  footerTextOffsetY?: number;
   headerTextWidth?: number;
   headerTextHeight?: number;
   headerTextColor?: string;
@@ -35,9 +35,16 @@ export interface PageConfig {
   headerTextSize?: number;
   footerTextWidth?: number;
   footerTextHeight?: number;
+  footerTextOffsetX?: number;
+  footerTextOffsetY?: number;
   footerTextColor?: string;
   footerTextFont?: string;
   footerTextSize?: number;
+  defaultFontFamily?: string;
+  defaultNodeStyle?: NodeStyle;
+  defaultNodeColor?: string;
+  defaultNodeBgColor?: string;
+  defaultNodeTextColor?: string;
 }
 
 export interface TreeNode {
@@ -51,6 +58,12 @@ export interface TreeNode {
   textAlign: 'left' | 'center' | 'right';
   style?: NodeStyle;
   subLabel?: string; // Optional for multi-line professional genealogy/org details
+  fontFamily?: string;
+  fontColor?: string;
+  fontBold?: boolean;
+  fontItalic?: boolean;
+  fontUnderline?: boolean;
+  footnote?: string;
 }
 
 export interface TreeEdge {

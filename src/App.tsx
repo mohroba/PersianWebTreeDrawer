@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { TreeProvider, useTree } from './context/TreeContext';
 import { getPageSizePx, formatDimensions } from './utils/pageUtils';
 import { NodeElement, EdgeElement } from './components/TreeElements';
+import { OutlineView } from './components/OutlineView';
 import { exportToSVG, exportToPNG, downloadFile } from './utils/exportUtils';
 import { TreeNode, TreeEdge, EdgeType, NodeStyle, PageSize, Orientation, ImageFit } from './types';
 import {
@@ -37,8 +38,17 @@ import {
   X,
   Sun,
   Moon,
-  Move
+  Move,
+  LogOut,
+  Coins,
+  LogIn,
+  CheckCircle2,
+  Bold,
+  Italic,
+  Underline,
+  Palette
 } from 'lucide-react';
+import { useAuth } from './context/AuthContext';
 
 const BUILTIN_LETTERHEADS = [
   {
@@ -235,8 +245,11 @@ function TreeDesignerApp() {
     setCurrentProjectId
   } = useTree();
 
+  const { user, coins, loading, signIn, signOut, buyCoins, deductCoin } = useAuth();
+
   const canvasRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Theme support
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -325,13 +338,12 @@ function TreeDesignerApp() {
   // Responsive mobile states
   const [showSidebar, setShowSidebar] = useState(() => window.innerWidth > 768);
   const [showInspector, setShowInspector] = useState(() => window.innerWidth > 1024);
+  const [showOutline, setShowOutline] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showProjectsDropdown, setShowProjectsDropdown] = useState(false);
   const [editingProjId, setEditingProjId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [newProjName, setNewProjName] = useState('');
-
-  const t = TRANSLATIONS[lang];
 
   // Drag and edit states
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -362,6 +374,58 @@ function TreeDesignerApp() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
 
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const projectsDropdownRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(event.target as Node)) {
+        setShowExportDropdown(false);
+      }
+      if (projectsDropdownRef.current && !projectsDropdownRef.current.contains(event.target as Node)) {
+        setShowProjectsDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleExport = async (type: 'print' | 'svg' | 'png' | 'json') => {
+    if (!user) {
+      alert(lang === 'fa' ? 'لطفا ابتدا وارد حساب کاربری خود شوید.' : 'Please sign in first.');
+      setShowExportDropdown(false);
+      return;
+    }
+
+    const isAdminUser = user.email === 'mohroba@gmail.com' || user.email?.toLowerCase().endsWith('@admin.com');
+
+    if (!isAdminUser && coins <= 0) {
+      alert(lang === 'fa' ? 'سکه کافی ندارید! لطفا سکه بخرید.' : 'Not enough coins! Please buy more.');
+      setShowExportDropdown(false);
+      return;
+    }
+
+    const success = isAdminUser ? true : await deductCoin();
+    if (success) {
+      if (type === 'print') {
+        window.focus();
+        setTimeout(() => window.print(), 100);
+      } else if (type === 'svg') {
+        exportToSVG(doc, canvasRef.current);
+      } else if (type === 'png') {
+        exportToPNG(doc, canvasRef.current);
+      } else if (type === 'json') {
+        const jsonStr = exportJSON();
+        downloadFile(jsonStr, `${doc.page.headerText || 'treesketch_chart'}.json`, 'application/json');
+      }
+    } else {
+      alert(lang === 'fa' ? 'خطا در کسر سکه' : 'Error consuming coin');
+    }
+    setShowExportDropdown(false);
+  };
+
   // Get physical pixel dimensions for the current page setting (96 DPI standard)
   const pageSize = getPageSizePx(doc.page.size, doc.page.orientation);
 
@@ -383,14 +447,13 @@ function TreeDesignerApp() {
         redo();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
         e.preventDefault();
-        window.focus();
-        window.print();
+        handleExport('print');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deleteSelected, undo, redo]);
+  }, [deleteSelected, undo, redo, handleExport]);
 
   // Translate client mouse coordinates to scaled SVG coordinates
   const getSVGCoords = useCallback((e: React.MouseEvent) => {
@@ -412,6 +475,178 @@ function TreeDesignerApp() {
       y: (touch.clientY - rect.top) / zoom
     };
   }, [zoom]);
+
+  const t = TRANSLATIONS[lang];
+
+  const isAdmin = user && (user.email === 'mohroba@gmail.com' || user.email?.toLowerCase().endsWith('@admin.com'));
+  const isCoinLocked = user && !isAdmin && coins <= 0;
+
+  if (loading) {
+    return (
+      <div className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-800'}`}>
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 text-indigo-500 animate-spin" />
+          <span className="text-xs font-semibold tracking-wider opacity-60 uppercase">
+            {lang === 'fa' ? 'در حال بارگذاری اطلاعات...' : 'Retrieving Profile Data...'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div 
+        dir={lang === 'fa' ? 'rtl' : 'ltr'} 
+        className={`min-h-screen flex items-center justify-center font-sans transition-colors duration-300 p-4 ${isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-800'}`}
+      >
+        <div className={`max-w-md w-full rounded-2xl border p-8 shadow-2xl transition-all duration-300 ${isDark ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}>
+          <div className="flex flex-col items-center text-center">
+            {/* Logo aspect */}
+            <div className={`p-4 rounded-2xl border mb-5 ${isDark ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-600'}`}>
+              <Sparkles className="w-12 h-12 stroke-[1.5] animate-pulse" />
+            </div>
+            
+            <h1 className="text-2xl font-black tracking-tight mb-2">
+              {lang === 'fa' ? 'طراح شجره‌نامه Rabook' : 'Rabook TreeSketch'}
+            </h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-500 mb-6">
+              {lang === 'fa' ? 'نرم‌افزار یکپارچه شجره‌نامه و نمودار درختی' : 'All-in-One Family Tree & Diagram Builder'}
+            </p>
+
+            <div className={`w-full p-4 rounded-xl border text-sm text-right mb-6 select-text space-y-2 leading-relaxed ${isDark ? 'bg-slate-950/40 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+              <p className="font-semibold text-xs uppercase tracking-wider text-amber-500 text-center">
+                {lang === 'fa' ? 'ورود الزامی است' : 'Authentication Required'}
+              </p>
+              <p className="text-center text-xs leading-6">
+                {lang === 'fa' 
+                  ? 'جهت طراحی شجره‌نامه، ذخیره‌سازی ابری پروژه‌ها، خروجی‌های نامحدود، مدیریت سکه‌ها و دسترسی به تمام ابزارهای Rabook، ورود به حساب کاربری گوگل الزامی می‌باشد.' 
+                  : 'To design family trees, auto-save projects securely in the cloud, export unlimited files, and access all editing features, please sign in with your Google Account.'}
+              </p>
+            </div>
+
+            <button
+              onClick={signIn}
+              className="w-full flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-6 rounded-xl transition cursor-pointer shadow-lg shadow-indigo-600/20 text-sm"
+            >
+              <LogIn className="w-5 h-5" />
+              <span>{lang === 'fa' ? 'ورود با حساب کاربری گوگل' : 'Sign in with Google Account'}</span>
+            </button>
+            
+            <div className="mt-4 flex items-center gap-2">
+              <button 
+                onClick={() => setLang(lang === 'fa' ? 'en' : 'fa')}
+                className="text-[10px] text-slate-400 hover:text-indigo-500 font-bold transition"
+              >
+                {lang === 'fa' ? 'English (EN)' : 'فارسی (FA)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isCoinLocked) {
+    return (
+      <div 
+        dir={lang === 'fa' ? 'rtl' : 'ltr'} 
+        className={`min-h-screen flex items-center justify-center font-sans transition-colors duration-300 p-4 ${isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-800'}`}
+      >
+        <div className={`max-w-xl w-full rounded-2xl border p-8 shadow-2xl transition-all duration-300 ${isDark ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}>
+          <div className="flex flex-col items-center">
+            {/* Out of Coins Logo */}
+            <div className={`p-4 rounded-2xl border mb-5 bg-amber-500/10 border-amber-500/20 text-amber-500`}>
+              <Coins className="w-12 h-12 stroke-[1.5]" />
+            </div>
+
+            <h1 className="text-xl font-extrabold tracking-tight mb-2 text-center">
+              {lang === 'fa' ? 'پایان اعتبار سکه‌ها' : 'Out of Coins'}
+            </h1>
+            <p className="text-xs text-slate-400 font-semibold mb-6 uppercase tracking-widest text-center">
+              {lang === 'fa' ? 'جهت کار با برنامه نیاز به سکه دارید' : 'Purchase coins to continue editing'}
+            </p>
+
+            <div className={`w-full p-4 rounded-xl border text-sm mb-6 ${isDark ? 'bg-slate-950/40 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+              <p className="text-center text-xs leading-6">
+                {lang === 'fa' 
+                  ? 'کاربر گرامی، تعداد سکه‌های حساب کاربری شما به اتمام رسیده است. برای ادامه استفاده از امکانات طراحی، رسم نمودار و خروجی‌های Rabook لطفا سکه تهیه کنید. در این نسخه آزمایشی پرداخت غیرفعال بوده و بسته‌ها رایگان هستند.'
+                  : 'You have exhausted your coin balance. To continue working on your family trees and exporting diagrams, please grab a demo coin package. In this preview, payments are simulated and completely free.'}
+              </p>
+            </div>
+
+            {/* Coin Packages Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 w-full mb-6">
+              {/* Bronze Pack */}
+              <div className={`border rounded-xl p-4 flex flex-col items-center text-center transition hover:scale-[1.02] ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1">
+                  {lang === 'fa' ? 'بسته برنزی' : 'Bronze Pack'}
+                </span>
+                <span className="text-2xl font-black text-indigo-500 mb-1">10</span>
+                <span className="text-[10px] opacity-60 mb-4">{lang === 'fa' ? 'سکه دمو' : 'Demo Coins'}</span>
+                <button
+                  onClick={() => buyCoins(10)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg text-xs transition cursor-pointer"
+                >
+                  {lang === 'fa' ? 'رایگان / دریافت' : 'Get Free'}
+                </button>
+              </div>
+
+              {/* Silver Pack */}
+              <div className={`border-2 rounded-xl p-4 flex flex-col items-center text-center transition hover:scale-[1.02] relative ${isDark ? 'bg-indigo-600/5 border-indigo-500/30' : 'bg-indigo-50/50 border-indigo-500/40'}`}>
+                <span className="absolute -top-2.5 bg-indigo-600 text-[8px] font-black uppercase text-white px-2 py-0.5 rounded-full">
+                  {lang === 'fa' ? 'محبوب‌ترین' : 'Popular'}
+                </span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 mt-1">
+                  {lang === 'fa' ? 'بسته نقره‌ای' : 'Silver Pack'}
+                </span>
+                <span className="text-2xl font-black text-indigo-400 mb-1">50</span>
+                <span className="text-[10px] opacity-60 mb-4">{lang === 'fa' ? 'سکه دمو' : 'Demo Coins'}</span>
+                <button
+                  onClick={() => buyCoins(50)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg text-xs transition cursor-pointer shadow-md shadow-indigo-600/10"
+                >
+                  {lang === 'fa' ? 'رایگان / دریافت' : 'Get Free'}
+                </button>
+              </div>
+
+              {/* Gold Pack */}
+              <div className={`border rounded-xl p-4 flex flex-col items-center text-center transition hover:scale-[1.02] ${isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-50 border-slate-200'}`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-500 mb-1">
+                  {lang === 'fa' ? 'بسته طلای ویژه' : 'Gold Pack'}
+                </span>
+                <span className="text-2xl font-black text-yellow-500 mb-1">100</span>
+                <span className="text-[10px] opacity-60 mb-4">{lang === 'fa' ? 'سکه دمو' : 'Demo Coins'}</span>
+                <button
+                  onClick={() => buyCoins(100)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 rounded-lg text-xs transition cursor-pointer"
+                >
+                  {lang === 'fa' ? 'رایگان / دریافت' : 'Get Free'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={signOut}
+                className="text-xs text-slate-500 hover:text-red-400 font-semibold transition flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{lang === 'fa' ? 'خروج از حساب کاربری' : 'Sign Out of Account'}</span>
+              </button>
+              <span className="text-slate-600">|</span>
+              <button 
+                onClick={() => setLang(lang === 'fa' ? 'en' : 'fa')}
+                className="text-xs text-slate-500 hover:text-indigo-500 font-semibold transition"
+              >
+                {lang === 'fa' ? 'English' : 'فارسی'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Touch handlers for mobile
   const handleNodeTouchStart = (e: React.TouchEvent, id: string) => {
@@ -647,8 +882,7 @@ function TreeDesignerApp() {
   const selectedNode = doc.nodes.find((n) => n.id === selectedNodeIds[0]);
   const selectedEdge = doc.edges.find((e) => e.id === selectedEdgeIds[0]);
 
-  // File loading triggers
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // File loading triggers - declared at top level
 
   const handleJSONUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -688,15 +922,15 @@ function TreeDesignerApp() {
       className={`min-h-screen flex flex-col font-sans select-none overflow-hidden transition-colors duration-300 ${isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-800'}`}
     >
       
-      {/* 1. GLASSMORPHISM TOP TOOLBAR (no-print) */}
-      <header className={`no-print h-16 shrink-0 border-b flex items-center px-4 md:px-6 justify-between z-40 relative gap-2 transition-colors duration-300 ${isDark ? 'bg-slate-900/40 backdrop-blur-md border-white/5 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-sm'}`}>
+      {/* 1. GLOBAL APP HEADER (no-print) */}
+      <header className={`no-print h-14 shrink-0 border-b flex items-center px-4 md:px-6 justify-between z-40 relative gap-2 transition-colors duration-300 ${isDark ? 'bg-slate-900 border-white/5 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-sm'}`}>
         <div className="flex items-center gap-2 md:gap-3">
           {/* Collapse Toggles (visible on all breakpoints) */}
           <button 
             onClick={() => setShowSidebar(!showSidebar)}
             className={`p-1.5 rounded-lg border transition cursor-pointer ${
               isDark
-                ? 'hover:bg-white/10 text-indigo-400 border-white/5 bg-slate-900/40'
+                ? 'hover:bg-white/10 text-indigo-400 border-white/5 bg-slate-900'
                 : 'hover:bg-slate-200 text-indigo-600 border-slate-200 bg-slate-100 shadow-sm'
             }`}
             title={t.toggleSidebar}
@@ -715,7 +949,7 @@ function TreeDesignerApp() {
           </div>
 
           {/* Project Switcher */}
-          <div className="relative z-50" id="project-switcher">
+          <div className="relative z-50 ml-1" id="project-switcher" ref={projectsDropdownRef}>
             <button
               onClick={() => setShowProjectsDropdown(!showProjectsDropdown)}
               className={`flex items-center gap-1.5 border rounded-lg px-2.5 py-1.5 text-xs transition cursor-pointer ${
@@ -732,7 +966,7 @@ function TreeDesignerApp() {
             </button>
             
             {showProjectsDropdown && (
-              <div className={`absolute left-0 mt-1.5 w-64 border rounded-lg shadow-xl p-2.5 z-50 text-xs ${
+              <div className={`absolute ${lang === 'fa' ? 'right-0' : 'left-0'} mt-1.5 w-64 border rounded-lg shadow-xl p-2.5 z-50 text-xs ${
                 isDark ? 'bg-slate-900 border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
               }`}>
                 <div className="text-[10px] uppercase tracking-wider font-bold mb-2 px-1.5 text-indigo-500">
@@ -875,27 +1109,9 @@ function TreeDesignerApp() {
           >
             {t.familyTree}
           </button>
-          <button
-            onClick={() => loadTemplate('org')}
-            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap ${
-              isDark ? 'text-slate-200 hover:bg-white/5' : 'text-slate-800 hover:bg-white/70'
-            }`}
-            title="Load organizational relation board template"
-          >
-            {t.orgChart}
-          </button>
-          <button
-            onClick={() => loadTemplate('blank')}
-            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap ${
-              isDark ? 'text-slate-400 hover:bg-white/5' : 'text-slate-500 hover:bg-white/70'
-            }`}
-            title="Clear canvas to fresh setup"
-          >
-            {t.blankTree}
-          </button>
         </div>
 
-        {/* Global Toolbar actions */}
+        {/* Global Header actions */}
         <div className="flex items-center gap-1 md:gap-2">
           
           {/* Dual Language Selector */}
@@ -916,67 +1132,10 @@ function TreeDesignerApp() {
             </button>
           </div>
 
-          {/* Zoom controls */}
-          <div className={`hidden sm:flex items-center p-1 rounded-md border ${
-            isDark ? 'bg-slate-950/50 border-white/5' : 'bg-slate-200/50 border-slate-300'
-          }`}>
-            <button
-              onClick={() => setZoom((z) => Math.max(0.3, z - 0.1))}
-              className={`p-1 rounded transition ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-300 text-slate-600'}`}
-              title="Zoom Out"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className={`text-[10px] px-1 font-mono w-10 text-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              {Math.round(zoom * 100)}%
-            </span>
-            <button
-              onClick={() => setZoom((z) => Math.min(2.5, z + 0.1))}
-              className={`p-1 rounded transition ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-300 text-slate-600'}`}
-              title="Zoom In"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <button
-            onClick={undo}
-            disabled={!canUndo}
-            className={`p-1.5 md:p-2 rounded-lg border transition ${
-              canUndo
-                ? isDark
-                  ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-white/10 cursor-pointer'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm cursor-pointer'
-                : isDark
-                  ? 'text-slate-600 border-white/5 bg-slate-900/20 cursor-not-allowed'
-                  : 'text-slate-300 border-slate-200/50 bg-slate-100/50 cursor-not-allowed'
-            }`}
-            title={t.undo}
-          >
-            <Undo className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={redo}
-            disabled={!canRedo}
-            className={`p-1.5 md:p-2 rounded-lg border transition ${
-              canRedo
-                ? isDark
-                  ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-white/10 cursor-pointer'
-                  : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm cursor-pointer'
-                : isDark
-                  ? 'text-slate-600 border-white/5 bg-slate-900/20 cursor-not-allowed'
-                  : 'text-slate-300 border-slate-200/50 bg-slate-100/50 cursor-not-allowed'
-            }`}
-            title={t.redo}
-          >
-            <Redo className="w-3.5 h-3.5" />
-          </button>
-
           {/* Theme Support Toggle */}
           <button
             onClick={() => setTheme(isDark ? 'light' : 'dark')}
-            className={`p-1.5 md:p-2 rounded-lg border transition cursor-pointer shadow-sm ${
+            className={`p-1.5 md:p-2 rounded-lg border transition cursor-pointer shadow-sm ml-1 mr-1 ${
               isDark
                 ? 'bg-slate-800/80 hover:bg-slate-700 text-amber-400 border-white/10'
                 : 'bg-white hover:bg-slate-100 text-amber-600 border-slate-200'
@@ -986,16 +1145,142 @@ function TreeDesignerApp() {
             {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
           </button>
 
+          {/* Auth / Coins Toggle */}
+          <div className={`hidden sm:flex items-center p-1 gap-1 rounded-md border ${
+            isDark ? 'bg-slate-950/50 border-amber-500/20' : 'bg-amber-50 border-amber-200'
+          }`}>
+            {user ? (
+              <>
+                <div title={user.email || ''} className="px-2 py-1 flex items-center gap-1.5 text-xs font-semibold text-amber-500 border-r border-amber-500/20">
+                  <Coins className="w-3.5 h-3.5" />
+                  <span>{coins}</span>
+                  <button onClick={() => buyCoins(10)} className="ml-1 bg-amber-500 text-white rounded-full p-0.5 hover:bg-amber-400 transition cursor-pointer" title={lang === 'fa' ? 'خرید 10 سکه' : 'Buy 10 Coins'}>
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+                <button
+                  onClick={signOut}
+                  className={`p-1 rounded transition cursor-pointer ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-300 text-slate-600'}`}
+                  title={lang === 'fa' ? 'خروج' : 'Sign out'}
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={signIn}
+                className={`flex items-center gap-1 px-2 py-1 rounded transition text-xs font-semibold cursor-pointer ${isDark ? 'hover:bg-white/10 text-slate-300' : 'hover:bg-slate-200 text-slate-600'}`}
+                title={lang === 'fa' ? 'ورود' : 'Sign in'}
+              >
+                <LogIn className="w-3.5 h-3.5 text-indigo-500" />
+                <span>{lang === 'fa' ? 'ورود' : 'Sign In'}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* 2. SECONDARY TOOLBAR */}
+      <div className={`no-print h-12 shrink-0 border-b flex items-center px-4 md:px-6 justify-between z-30 relative gap-2 transition-colors duration-300 ${isDark ? 'bg-slate-900/40 backdrop-blur-md border-white/5' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
+        {/* Templates & Reset Actions */}
+        <div className={`flex rounded-lg p-0.5 items-center overflow-x-auto max-w-[140px] md:max-w-max bg-transparent`}>
+          <button
+            onClick={() => loadTemplate('family')}
+            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap cursor-pointer ${
+              isDark ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+            }`}
+            title={lang === 'fa' ? 'بارگذاری قالب شجره نامه' : 'Load standard genealogy chart template'}
+          >
+            {t.familyTree}
+          </button>
+          <button
+            onClick={() => loadTemplate('org')}
+            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap cursor-pointer ${
+              isDark ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+            }`}
+            title={lang === 'fa' ? 'بارگذاری قالب چارت سازمانی' : 'Load organizational relation board template'}
+          >
+            {t.orgChart}
+          </button>
+          <button
+            onClick={() => loadTemplate('blank')}
+            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap cursor-pointer ${
+              isDark ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+            }`}
+            title={lang === 'fa' ? 'پاکسازی درخت' : 'Clear canvas to fresh setup'}
+          >
+            {t.blankTree}
+          </button>
+        </div>
+
+        {/* Tools Actions: Undo, Redo, Zoom, Export */}
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Zoom controls */}
+          <div className={`hidden sm:flex items-center p-0.5 rounded-md border ${
+            isDark ? 'bg-slate-950/50 border-white/5' : 'bg-slate-200/50 border-slate-300'
+          }`}>
+            <button
+              onClick={() => setZoom((z) => Math.max(0.3, z - 0.1))}
+              className={`p-1 rounded transition cursor-pointer ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-300 text-slate-600'}`}
+              title={lang === 'fa' ? 'کوچک‌نمایی' : 'Zoom Out'}
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className={`text-[10px] px-1 font-mono w-10 text-center ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={() => setZoom((z) => Math.min(2.5, z + 0.1))}
+              className={`p-1 rounded transition cursor-pointer ${isDark ? 'hover:bg-white/10 text-slate-400' : 'hover:bg-slate-300 text-slate-600'}`}
+              title={lang === 'fa' ? 'بزرگ‌نمایی' : 'Zoom In'}
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              className={`p-1.5 rounded-lg border transition ${
+                canUndo
+                  ? isDark
+                    ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-white/10 cursor-pointer'
+                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm cursor-pointer'
+                  : isDark
+                    ? 'text-slate-600 border-white/5 bg-slate-900/20 cursor-not-allowed'
+                    : 'text-slate-300 border-slate-200/50 bg-slate-100/50 cursor-not-allowed'
+              }`}
+              title={t.undo}
+            >
+              <Undo className="w-3.5 h-3.5" />
+            </button>
+
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              className={`p-1.5 rounded-lg border transition ${
+                canRedo
+                  ? isDark
+                    ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-white/10 cursor-pointer'
+                    : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200 shadow-sm cursor-pointer'
+                  : isDark
+                    ? 'text-slate-600 border-white/5 bg-slate-900/20 cursor-not-allowed'
+                    : 'text-slate-300 border-slate-200/50 bg-slate-100/50 cursor-not-allowed'
+              }`}
+              title={t.redo}
+            >
+              <Redo className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Grouped Print & Export Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={exportDropdownRef}>
             <div className="flex items-center bg-indigo-600 hover:bg-indigo-500 rounded-lg overflow-hidden shadow-md transition">
               <button
-                onClick={() => {
-                  window.focus();
-                  window.print();
-                }}
+                onClick={() => handleExport('print')}
                 className="flex items-center gap-1.5 px-3 py-1.5 font-semibold text-[11px] text-white transition-colors cursor-pointer"
-                title="Print sheet directly (Ctrl+P)"
+                title={lang === 'fa' ? 'چاپ مستقیم (Ctrl+P)' : "Print sheet directly (Ctrl+P)"}
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{t.print}</span>
@@ -1011,15 +1296,11 @@ function TreeDesignerApp() {
 
             {/* Dropdown menu */}
             {showExportDropdown && (
-              <div className={`absolute right-0 mt-1.5 w-48 border rounded-lg shadow-xl py-1 z-50 text-xs ${
+              <div className={`absolute ${lang === 'fa' ? 'left-0' : 'right-0'} mt-1.5 w-48 border rounded-lg shadow-xl py-1 z-50 text-xs ${
                 isDark ? 'bg-slate-900 border-white/10 text-slate-200' : 'bg-white border-slate-200 text-slate-800'
               }`}>
                 <button
-                  onClick={() => {
-                    window.focus();
-                    window.print();
-                    setShowExportDropdown(false);
-                  }}
+                  onClick={() => handleExport('print')}
                   className={`w-full ${lang === 'fa' ? 'text-right' : 'text-left'} px-3 py-2 transition flex items-center gap-2 cursor-pointer ${
                     isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'
                   }`}
@@ -1028,10 +1309,7 @@ function TreeDesignerApp() {
                   <span>{t.print}</span>
                 </button>
                 <button
-                  onClick={() => {
-                    exportToSVG(doc, canvasRef.current);
-                    setShowExportDropdown(false);
-                  }}
+                  onClick={() => handleExport('svg')}
                   className={`w-full ${lang === 'fa' ? 'text-right' : 'text-left'} px-3 py-2 transition flex items-center gap-2 cursor-pointer ${
                     isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'
                   }`}
@@ -1040,10 +1318,7 @@ function TreeDesignerApp() {
                   <span>{lang === 'fa' ? 'خروجی به صورت SVG' : 'Export as SVG'}</span>
                 </button>
                 <button
-                  onClick={() => {
-                    exportToPNG(doc, canvasRef.current);
-                    setShowExportDropdown(false);
-                  }}
+                  onClick={() => handleExport('png')}
                   className={`w-full ${lang === 'fa' ? 'text-right' : 'text-left'} px-3 py-2 transition flex items-center gap-2 cursor-pointer ${
                     isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'
                   }`}
@@ -1052,11 +1327,7 @@ function TreeDesignerApp() {
                   <span>{lang === 'fa' ? 'خروجی به صورت PNG' : 'Export as PNG'}</span>
                 </button>
                 <button
-                  onClick={() => {
-                    const jsonStr = exportJSON();
-                    downloadFile(jsonStr, `${doc.page.headerText || 'treesketch_chart'}.json`, 'application/json');
-                    setShowExportDropdown(false);
-                  }}
+                  onClick={() => handleExport('json')}
                   className={`w-full ${lang === 'fa' ? 'text-right' : 'text-left'} px-3 py-2 transition flex items-center gap-2 cursor-pointer ${
                     isDark ? 'text-slate-200 hover:bg-slate-800' : 'text-slate-700 hover:bg-slate-100'
                   }`}
@@ -1091,6 +1362,19 @@ function TreeDesignerApp() {
             <HelpCircle className="w-4 h-4" />
           </button>
 
+          {/* Toggle Outline */}
+          <button 
+            onClick={() => setShowOutline(!showOutline)}
+            className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center gap-1 ${
+              isDark
+                ? showOutline ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'hover:bg-white/10 text-indigo-400 border-white/5 bg-slate-900/40'
+                : showOutline ? 'bg-indigo-100 text-indigo-700 border-indigo-200' : 'hover:bg-slate-200 text-indigo-600 border-slate-200 bg-slate-100 shadow-sm'
+            }`}
+            title={lang === 'fa' ? 'نمایش ساختار درختی' : 'Toggle Outline View'}
+          >
+            <span className="font-semibold text-[10px] uppercase tracking-wider hidden sm:inline">&nbsp;{lang === 'fa' ? 'ساختار درختی' : 'Outline'}</span>
+          </button>
+
           {/* Toggle Inspector (visible on all breakpoints) */}
           <button 
             onClick={() => setShowInspector(!showInspector)}
@@ -1104,11 +1388,17 @@ function TreeDesignerApp() {
             <Layers className="w-4 h-4" />
           </button>
         </div>
-      </header>
-
+      </div>
       {/* Main app workspace split */}
       <div className="flex-1 flex overflow-hidden relative">
         
+        {/* Outline View Overlay */}
+        {showOutline && (
+          <div className="absolute top-0 bottom-0 left-0 w-80 z-20 border-r shadow-2xl bg-white flex flex-col no-print transition-transform transform translate-x-0">
+            <OutlineView />
+          </div>
+        )}
+
         {/* Backdrop for mobile left sidebar */}
         {showSidebar && isMobile && (
           <div 
@@ -1208,12 +1498,45 @@ function TreeDesignerApp() {
                       isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 shadow-sm font-medium'
                     }`}
                   >
-                    <option value="A4">A4 Standard</option>
-                    <option value="A3">A3 Oversized</option>
-                    <option value="Letter">US Letter</option>
-                    <option value="Legal">US Legal</option>
+                    <option value="A4">{lang === 'fa' ? 'کاغذ A4 استاندارد' : 'A4 Standard'}</option>
+                    <option value="A5">{lang === 'fa' ? 'کاغذ A5 کوچک' : 'A5 Small'}</option>
+                    <option value="A3">{lang === 'fa' ? 'کاغذ A3 بزرگ' : 'A3 Oversized'}</option>
+                    <option value="Letter">{lang === 'fa' ? 'نامه US Letter' : 'US Letter'}</option>
+                    <option value="Legal">{lang === 'fa' ? 'حقوقی US Legal' : 'US Legal'}</option>
+                    <option value="B5">{lang === 'fa' ? 'کاغذ B5 استاندارد' : 'B5 Standard'}</option>
+                    <option value="Custom">{lang === 'fa' ? 'ابعاد دلخواه' : 'Custom Size'}</option>
                   </select>
                 </div>
+                {doc.page.size === 'Custom' && (
+                  <div className="flex gap-2">
+                    <div>
+                      <label className={`text-[11px] mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'عرض (میلی‌متر)' : 'Width (mm)'}
+                      </label>
+                      <input
+                        type="number"
+                        value={doc.page.customWidth || 210}
+                        onChange={(e) => updatePageConfig({ customWidth: parseInt(e.target.value) || 210 })}
+                        className={`w-full border rounded-md p-1.5 text-xs transition ${
+                          isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className={`text-[11px] mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'ارتفاع (میلی‌متر)' : 'Height (mm)'}
+                      </label>
+                      <input
+                        type="number"
+                        value={doc.page.customHeight || 297}
+                        onChange={(e) => updatePageConfig({ customHeight: parseInt(e.target.value) || 297 })}
+                        className={`w-full border rounded-md p-1.5 text-xs transition ${
+                          isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 shadow-sm'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className={`text-[11px] mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.orientation}</label>
@@ -1250,6 +1573,101 @@ function TreeDesignerApp() {
                     onChange={(e) => updatePageConfig({ margin: parseInt(e.target.value) })}
                     className="w-full accent-indigo-500 cursor-pointer"
                   />
+                </div>
+              </div>
+            </div>
+
+            <div className={`h-px ${isDark ? 'bg-white/5' : 'bg-slate-200'}`}></div>
+
+            {/* Page wide Defaults */}
+            <div>
+              <h3 className={`text-[10px] font-bold uppercase tracking-widest mb-3 flex items-center gap-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <Palette className="w-3 h-3 text-indigo-500" />
+                <span>{lang === 'fa' ? 'پیش‌فرض‌های طراحی بوم' : 'Chart Canvas Defaults'}</span>
+              </h3>
+              <div className="flex flex-col gap-3">
+                {/* Default Font Family */}
+                <div>
+                  <label className={`text-[11px] mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {lang === 'fa' ? 'فونت کلی نمودار' : 'Default Font Family'}
+                  </label>
+                  <select
+                    value={doc.page.defaultFontFamily || ''}
+                    onChange={(e) => updatePageConfig({ defaultFontFamily: e.target.value })}
+                    className={`w-full border rounded-md p-2 text-xs transition ${
+                      isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 shadow-sm font-medium'
+                    }`}
+                  >
+                    <option value="">{lang === 'fa' ? 'پیش‌فرض سیستم (Inter)' : 'System Default (Inter)'}</option>
+                    <option value="Tahoma">Tahoma</option>
+                    <option value="B Nazanin">B Nazanin / Nazanin</option>
+                    <option value="Vazir">Vazir</option>
+                    <option value="Fira Code">Fira Code</option>
+                    <option value="JetBrains Mono">JetBrains Mono</option>
+                    <option value="Courier New">Courier New</option>
+                  </select>
+                </div>
+
+                {/* Default Node Shape / Style */}
+                <div>
+                  <label className={`text-[11px] mb-1 block ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {lang === 'fa' ? 'نوع گره‌های پیش‌فرض' : 'Default Node Style'}
+                  </label>
+                  <select
+                    value={doc.page.defaultNodeStyle || 'rectangle'}
+                    onChange={(e) => updatePageConfig({ defaultNodeStyle: e.target.value as any })}
+                    className={`w-full border rounded-md p-2 text-xs transition ${
+                      isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 shadow-sm font-medium'
+                    }`}
+                  >
+                    <option value="rectangle">{lang === 'fa' ? 'مستطیل' : 'Rectangle'}</option>
+                    <option value="pill">{lang === 'fa' ? 'کپسولی / دایره‌ای' : 'Pill'}</option>
+                    <option value="card">{lang === 'fa' ? 'کارت دو خطه' : 'Double Border Card'}</option>
+                    <option value="text-only">{lang === 'fa' ? 'فقط متن (بی‌قاب)' : 'Text Only'}</option>
+                  </select>
+                </div>
+
+                {/* Default Coloring */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className={`text-[9px] mb-1 block truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      {lang === 'fa' ? 'قاب' : 'Border'}
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="color"
+                        value={doc.page.defaultNodeColor || '#000000'}
+                        onChange={(e) => updatePageConfig({ defaultNodeColor: e.target.value })}
+                        className="w-7 h-7 p-0 rounded-md cursor-pointer border-none bg-transparent"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={`text-[9px] mb-1 block truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      {lang === 'fa' ? 'زمینه' : 'Fill'}
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="color"
+                        value={doc.page.defaultNodeBgColor || '#ffffff'}
+                        onChange={(e) => updatePageConfig({ defaultNodeBgColor: e.target.value })}
+                        className="w-7 h-7 p-0 rounded-md cursor-pointer border-none bg-transparent"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={`text-[9px] mb-1 block truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      {lang === 'fa' ? 'متن' : 'Text'}
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="color"
+                        value={doc.page.defaultNodeTextColor || '#000000'}
+                        onChange={(e) => updatePageConfig({ defaultNodeTextColor: e.target.value })}
+                        className="w-7 h-7 p-0 rounded-md cursor-pointer border-none bg-transparent"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1420,29 +1838,31 @@ function TreeDesignerApp() {
                     <span>Drag to reposition title (Right-click to style)</span>
                   </div>
 
-                  <input
-                    type="text"
+                  <textarea
                     value={doc.page.headerText ?? 'FAMILY TREE CHART'}
                     onChange={(e) => updatePageConfig({ headerText: e.target.value })}
                     placeholder="FAMILY TREE CHART"
-                    className="bg-transparent text-center font-sans tracking-widest uppercase font-semibold block w-full shadow-none text-ellipsis outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded"
+                    className="bg-transparent text-center font-sans tracking-widest uppercase font-semibold block w-full shadow-none outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded resize-none overflow-hidden"
+                    rows={doc.page.headerText?.split('\n').length || 1}
                     style={{
                       fontSize: doc.page.headerTextSize ? `${doc.page.headerTextSize}px` : '16px',
                       color: doc.page.headerTextColor || '#000000',
                       fontFamily: doc.page.headerTextFont || 'inherit',
+                      lineHeight: '1.2'
                     }}
                   />
-                  <input
-                    type="text"
+                  <textarea
                     value={doc.page.headerSubText ?? 'Genealogy & Org Relations Line-only Sheet'}
                     onChange={(e) => updatePageConfig({ headerSubText: e.target.value })}
                     placeholder="Genealogy & Org Relations Line-only Sheet"
-                    className="bg-transparent text-center text-[10px] tracking-wider block w-full shadow-none mt-0.5 text-ellipsis outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded"
+                    className="bg-transparent text-center text-[10px] tracking-wider block w-full shadow-none mt-0.5 outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded resize-none overflow-hidden"
+                    rows={doc.page.headerSubText?.split('\n').length || 1}
                     style={{
                       fontSize: doc.page.headerTextSize ? `${Math.max(9, doc.page.headerTextSize * 0.6)}px` : '10px',
                       color: doc.page.headerTextColor || '#64748b',
                       fontFamily: doc.page.headerTextFont || 'inherit',
                       opacity: 0.75,
+                      lineHeight: '1.2'
                     }}
                   />
 
@@ -1533,6 +1953,24 @@ function TreeDesignerApp() {
                     />
                   ))}
                 </svg>
+
+                {/* Live Footnotes Overlay */}
+                {doc.nodes.some(n => n.footnote && n.footnote.trim()) && (
+                  <div className="absolute bottom-2 left-6 right-6 pointer-events-none select-none border-t border-slate-300 pt-2 flex flex-col gap-1 z-10 bg-white/80 backdrop-blur-sm p-2 rounded">
+                    {doc.nodes
+                      .filter(n => n.footnote && n.footnote.trim())
+                      .sort((a, b) => {
+                        if (Math.abs(a.y - b.y) > 20) return a.y - b.y;
+                        return a.x - b.x;
+                      })
+                      .map((node, index) => (
+                        <div key={node.id} className="text-xs text-slate-700 flex gap-1.5 leading-tight">
+                          <span className="font-bold text-indigo-600">[{index + 1}]</span>
+                          <span>{node.footnote}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </div>
 
               {/* Customizable Footer Banner Image/Text */}
@@ -1600,29 +2038,31 @@ function TreeDesignerApp() {
                     <span>Drag to move footer text (Right-click to style)</span>
                   </div>
 
-                  <input
-                    type="text"
+                  <textarea
                     value={doc.page.footerText ?? 'طراحی شده با رابوک'}
                     onChange={(e) => updatePageConfig({ footerText: e.target.value })}
                     placeholder="طراحی شده با رابوک"
-                    className="bg-transparent text-center font-sans tracking-widest uppercase font-semibold block w-full shadow-none text-ellipsis outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded"
+                    className="bg-transparent text-center font-sans tracking-widest uppercase font-semibold block w-full shadow-none outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded resize-none overflow-hidden"
+                    rows={doc.page.footerText?.split('\n').length || 1}
                     style={{
                       fontSize: doc.page.footerTextSize ? `${doc.page.footerTextSize}px` : '14px',
                       color: doc.page.footerTextColor || '#000000',
                       fontFamily: doc.page.footerTextFont || 'inherit',
+                      lineHeight: '1.2'
                     }}
                   />
-                  <input
-                    type="text"
+                  <textarea
                     value={doc.page.footerSubText ?? '© 2026'}
                     onChange={(e) => updatePageConfig({ footerSubText: e.target.value })}
                     placeholder="© 2026"
-                    className="bg-transparent text-center text-[10px] tracking-wider block w-full shadow-none mt-0.5 text-ellipsis outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded"
+                    className="bg-transparent text-center text-[10px] tracking-wider block w-full shadow-none mt-0.5 outline-none border border-transparent hover:border-slate-300 focus:bg-white/95 focus:border-indigo-500 px-1 py-0.5 rounded resize-none overflow-hidden"
+                    rows={doc.page.footerSubText?.split('\n').length || 1}
                     style={{
                       fontSize: doc.page.footerTextSize ? `${Math.max(9, doc.page.footerTextSize * 0.7)}px` : '10px',
                       color: doc.page.footerTextColor || '#64748b',
                       fontFamily: doc.page.footerTextFont || 'inherit',
                       opacity: 0.75,
+                      lineHeight: '1.2'
                     }}
                   />
 
@@ -1721,7 +2161,7 @@ function TreeDesignerApp() {
                       className={`w-full border rounded-md p-2 text-xs transition ${
                         isDark ? 'bg-slate-950 border-white/10 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
                       }`}
-                      placeholder="Enter node title"
+                      placeholder={lang === 'fa' ? 'عنوان گره را وارد کنید' : 'Enter node title'}
                     />
                   </div>
 
@@ -1734,7 +2174,20 @@ function TreeDesignerApp() {
                       className={`w-full border rounded-md p-2 text-xs transition ${
                         isDark ? 'bg-slate-950 border-white/10 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
                       }`}
-                      placeholder="e.g. b. 1956 - d.2023"
+                      placeholder={lang === 'fa' ? 'مثال: مدیر عامل' : 'e.g. b. 1956 - d.2023'}
+                    />
+                  </div>
+                  <div>
+                    <label className={`text-[11px] block mb-1 flex items-center justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                      {lang === 'fa' ? 'پاورقی (Footnote)' : 'Footnote Reference'}
+                    </label>
+                    <textarea
+                      value={selectedNode.footnote || ''}
+                      onChange={(e) => updateNode(selectedNode.id, { footnote: e.target.value })}
+                      className={`w-full border rounded-md p-2 text-xs transition min-h-[50px] resize-y overflow-auto ${
+                        isDark ? 'bg-slate-950 border-white/10 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
+                      }`}
+                      placeholder={lang === 'fa' ? 'توضیحات پاورقی...' : 'Enter footnote text...'}
                     />
                   </div>
 
@@ -1753,55 +2206,123 @@ function TreeDesignerApp() {
                       />
                     </div>
                     <div>
+                      <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'سبک فونت' : 'Font Style'}
+                      </label>
+                      <div className={`grid grid-cols-3 gap-0.5 p-1 rounded border h-9 transition ${
+                        isDark ? 'bg-slate-950 border-white/10' : 'bg-slate-100 border-slate-200'
+                      }`}>
+                        <button
+                          onClick={() => updateNode(selectedNode.id, { fontBold: !selectedNode.fontBold })}
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
+                            selectedNode.fontBold ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
+                          }`}
+                          title={lang === 'fa' ? 'ضخیم (بولد)' : 'Bold'}
+                        >
+                          <Bold className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => updateNode(selectedNode.id, { fontItalic: !selectedNode.fontItalic })}
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
+                            selectedNode.fontItalic ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
+                          }`}
+                          title={lang === 'fa' ? 'کج (ایتالیک)' : 'Italic'}
+                        >
+                          <Italic className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => updateNode(selectedNode.id, { fontUnderline: !selectedNode.fontUnderline })}
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
+                            selectedNode.fontUnderline ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
+                          }`}
+                          title={lang === 'fa' ? 'زیرخط‌دار' : 'Underline'}
+                        >
+                          <Underline className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
                       <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.alignMode}</label>
                       <div className={`grid grid-cols-3 gap-0.5 p-1 rounded border h-9 transition ${
                         isDark ? 'bg-slate-950 border-white/10' : 'bg-slate-100 border-slate-200'
                       }`}>
                         <button
                           onClick={() => updateNode(selectedNode.id, { textAlign: 'left' })}
-                          className={`p-1 rounded text-xs flex justify-center items-center cursor-pointer ${
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
                             selectedNode.textAlign === 'left' ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
                           }`}
-                          title="Align Left"
+                          title={lang === 'fa' ? 'تراز چپ' : 'Align Left'}
                         >
                           <AlignLeft className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => updateNode(selectedNode.id, { textAlign: 'center' })}
-                          className={`p-1 rounded text-xs flex justify-center items-center cursor-pointer ${
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
                             selectedNode.textAlign === 'center' ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
                           }`}
-                          title="Align Center"
+                          title={lang === 'fa' ? 'تراز وسط' : 'Align Center'}
                         >
                           <AlignCenter className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => updateNode(selectedNode.id, { textAlign: 'right' })}
-                          className={`p-1 rounded text-xs flex justify-center items-center cursor-pointer ${
+                          className={`p-1 rounded flex justify-center items-center cursor-pointer ${
                             selectedNode.textAlign === 'right' ? 'bg-indigo-600 text-white font-bold' : isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-white text-slate-600'
                           }`}
-                          title="Align Right"
+                          title={lang === 'fa' ? 'تراز راست' : 'Align Right'}
                         >
                           <AlignRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </div>
+                    <div>
+                      <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.cardStyle}</label>
+                      <select
+                        value={selectedNode.style || 'rectangle'}
+                        onChange={(e) => updateNode(selectedNode.id, { style: e.target.value as NodeStyle })}
+                        className={`w-full border rounded-md p-2 text-xs transition ${
+                          isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
+                        }`}
+                      >
+                        <option value="rectangle">{t.styleRectangle}</option>
+                        <option value="pill">{t.stylePill}</option>
+                        <option value="card">{t.styleDouble}</option>
+                        <option value="text-only">{t.styleTextOnly}</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
-                    <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.cardStyle}</label>
-                    <select
-                      value={selectedNode.style || 'rectangle'}
-                      onChange={(e) => updateNode(selectedNode.id, { style: e.target.value as NodeStyle })}
-                      className={`w-full border rounded-md p-2 text-xs transition ${
-                        isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
-                      }`}
-                    >
-                      <option value="rectangle">{t.styleRectangle}</option>
-                      <option value="pill">{t.stylePill}</option>
-                      <option value="card">{t.styleDouble}</option>
-                      <option value="text-only">{t.styleTextOnly}</option>
-                    </select>
+                     <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                       {lang === 'fa' ? 'خانواده فونت' : 'Font Family'}
+                     </label>
+                     <input
+                        type="text"
+                        placeholder={lang === 'fa' ? 'مثال: بی نازنین، تاهوما...' : 'e.g. B Nazanin, Tahoma...'}
+                        value={selectedNode.fontFamily || ''}
+                        onChange={(e) => updateNode(selectedNode.id, { fontFamily: e.target.value })}
+                        className={`w-full border rounded-md p-2 text-xs transition ${
+                          isDark ? 'bg-slate-950 border-white/10 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
+                        }`}
+                     />
+                  </div>
+
+                  <div>
+                     <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                       {lang === 'fa' ? 'رنگ نوشته' : 'Text Color'}
+                     </label>
+                     <div className="flex gap-2 items-center">
+                        <input
+                           type="color"
+                           value={selectedNode.fontColor || '#000000'}
+                           onChange={(e) => updateNode(selectedNode.id, { fontColor: e.target.value })}
+                           className="w-8 h-8 rounded cursor-pointer border-none bg-transparent"
+                        />
+                        <span className="text-xs font-mono text-slate-500">{selectedNode.fontColor || '#000000'}</span>
+                     </div>
                   </div>
                 </div>
               </div>
@@ -1810,7 +2331,7 @@ function TreeDesignerApp() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className={`text-[10px] font-bold uppercase tracking-widest flex items-center gap-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     <Link className="w-3 h-3 text-indigo-505" />
-                    <span>Connection details</span>
+                    <span>{lang === 'fa' ? 'جزئیات اتصال / رابطه' : 'Connection details'}</span>
                   </h3>
                 </div>
 
@@ -1875,11 +2396,11 @@ function TreeDesignerApp() {
                       <div className="grid grid-cols-1 gap-2">
                         <div>
                           <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.headerText}</label>
-                          <input
-                            type="text"
+                          <textarea
+                            rows={3}
                             value={doc.page.headerText || ''}
                             onChange={(e) => updatePageConfig({ headerText: e.target.value })}
-                            className={`w-full border rounded p-1.5 text-xs transition ${
+                            className={`w-full border rounded p-1.5 text-xs transition min-h-[60px] ${
                               isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800'
                             }`}
                             placeholder="e.g. OUR FAMILY TREE"
@@ -1887,15 +2408,17 @@ function TreeDesignerApp() {
                         </div>
 
                         <div>
-                          <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Header Subtitle</label>
-                          <input
-                            type="text"
+                          <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                            {lang === 'fa' ? 'پیش‌متن / زیرعنوان هدر' : 'Header Subtitle'}
+                          </label>
+                          <textarea
+                            rows={3}
                             value={doc.page.headerSubText || ''}
                             onChange={(e) => updatePageConfig({ headerSubText: e.target.value })}
-                            className={`w-full border rounded p-1.5 text-xs transition ${
+                            className={`w-full border rounded p-1.5 text-xs transition min-h-[60px] ${
                               isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800'
                             }`}
-                            placeholder="e.g. Genealogy & Org Relations Chart"
+                            placeholder={lang === 'fa' ? 'مثال: شجره‌نامه خانوادگی خاندان احمدی' : 'e.g. Genealogy & Org Relations Chart'}
                           />
                         </div>
 
@@ -1904,13 +2427,15 @@ function TreeDesignerApp() {
                             onClick={() => updatePageConfig({ headerTextOffsetX: 0, headerTextOffsetY: 0 })}
                             className="text-[10px] py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 rounded transition font-medium cursor-pointer"
                           >
-                            Reset Title Coordinates
+                            {lang === 'fa' ? 'بازنشانی مختصات عنوان اصلی' : 'Reset Title Coordinates'}
                           </button>
                         )}
                       </div>
 
                       <div>
-                        <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Built-in Designs / Presets</label>
+                        <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {lang === 'fa' ? 'الگوها و پس‌زمینه‌های آماده' : 'Built-in Designs / Presets'}
+                        </label>
                         <select
                           value={BUILTIN_LETTERHEADS.find(b => b.svg === doc.page.headerImage)?.id || (doc.page.headerImage ? 'custom' : 'none')}
                           onChange={(e) => {
@@ -1935,11 +2460,21 @@ function TreeDesignerApp() {
                             isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
                           }`}
                         >
-                          <option value="none">None (Standard Text)</option>
-                          <option value="custom">-- Custom File Upload --</option>
-                          {BUILTIN_LETTERHEADS.map(preset => (
-                            <option key={preset.id} value={preset.id}>{preset.name}</option>
-                          ))}
+                          <option value="none">{lang === 'fa' ? 'بدون طرح (فقط متن استاندارد)' : 'None (Standard Text)'}</option>
+                          <option value="custom">{lang === 'fa' ? '-- بارگذاری تصویر دلخواه --' : '-- Custom File Upload --'}</option>
+                          {BUILTIN_LETTERHEADS.map(preset => {
+                            let displayName = preset.name;
+                            if (lang === 'fa') {
+                              if (preset.id === 'corporate') displayName = 'طرح حاشیه هندسی مدرن (نیلی/قرمز)';
+                              else if (preset.id === 'editorial') displayName = 'طرح لوکس کلاسیک (طلایی/سنگ‌لوح)';
+                              else if (preset.id === 'tech') displayName = 'طرح خطوط مهندسی دقیق (نقشه‌برداری)';
+                              else if (preset.id === 'watercolor') displayName = 'طرح هنری مینیمال موج آب‌رنگی';
+                              else if (preset.id === 'brutalist') displayName = 'طرح نوارهای پررنگ مینی‌مال (مدرنیست)';
+                            }
+                            return (
+                              <option key={preset.id} value={preset.id}>{displayName}</option>
+                            );
+                          })}
                         </select>
                       </div>
 
@@ -1955,11 +2490,15 @@ function TreeDesignerApp() {
 
                       {doc.page.headerImage && (
                         <div className="flex flex-col gap-2 bg-indigo-500/5 dark:bg-white/5 p-2 rounded border border-indigo-500/10 dark:border-white/5 mt-1">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 block">Position & Scale</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 block">
+                            {lang === 'fa' ? 'تغییر موقعیت و مقیاس تصویر' : 'Position & Scale'}
+                          </span>
                           
                           <div className="grid grid-cols-2 gap-1.5">
                             <div>
-                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Height (px)</label>
+                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {lang === 'fa' ? 'ارتفاع (پیکسل)' : 'Height (px)'}
+                              </label>
                               <input
                                 type="number"
                                 min="20"
@@ -1972,7 +2511,9 @@ function TreeDesignerApp() {
                               />
                             </div>
                             <div>
-                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fit Mode</label>
+                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {lang === 'fa' ? 'نحوه انطباق' : 'Fit Mode'}
+                              </label>
                               <select
                                 value={doc.page.headerFit}
                                 onChange={(e) => updatePageConfig({ headerFit: e.target.value as ImageFit })}
@@ -1980,16 +2521,18 @@ function TreeDesignerApp() {
                                   isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-804 font-medium'
                                 }`}
                               >
-                                <option value="contain">Contain</option>
-                                <option value="cover">Cover</option>
-                                <option value="stretch">Stretch</option>
+                                <option value="contain">{lang === 'fa' ? 'داخل کادر (Contain)' : 'Contain'}</option>
+                                <option value="cover">{lang === 'fa' ? 'پوشش کامل (Cover)' : 'Cover'}</option>
+                                <option value="stretch">{lang === 'fa' ? 'کشش تصویر (Stretch)' : 'Stretch'}</option>
                               </select>
                             </div>
                           </div>
 
                           <div>
                             <div className="flex justify-between text-[9px] mb-0.5">
-                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Zoom Scale</span>
+                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                {lang === 'fa' ? 'بزرگنمایی تصویر' : 'Zoom Scale'}
+                              </span>
                               <span className="font-mono text-indigo-500">{(doc.page.headerScale ?? 1).toFixed(2)}x</span>
                             </div>
                             <input
@@ -2006,7 +2549,9 @@ function TreeDesignerApp() {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <div className="flex justify-between text-[9px] mb-0.5">
-                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Move X</span>
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                  {lang === 'fa' ? 'جابجایی افقی (X)' : 'Move X'}
+                                </span>
                                 <span className="font-mono text-indigo-500">{doc.page.headerOffsetX ?? 0}px</span>
                               </div>
                               <input
@@ -2021,7 +2566,9 @@ function TreeDesignerApp() {
                             </div>
                             <div>
                               <div className="flex justify-between text-[9px] mb-0.5">
-                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Move Y</span>
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                  {lang === 'fa' ? 'جابجایی عمودی (Y)' : 'Move Y'}
+                                </span>
                                 <span className="font-mono text-indigo-500">{doc.page.headerOffsetY ?? 0}px</span>
                               </div>
                               <input
@@ -2048,11 +2595,11 @@ function TreeDesignerApp() {
                       <div className="grid grid-cols-1 gap-2">
                         <div>
                           <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t.footerText}</label>
-                          <input
-                            type="text"
+                          <textarea
+                            rows={3}
                             value={doc.page.footerText || ''}
                             onChange={(e) => updatePageConfig({ footerText: e.target.value })}
-                            className={`w-full border rounded p-1.5 text-xs transition ${
+                            className={`w-full border rounded p-1.5 text-xs transition min-h-[60px] ${
                               isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800'
                             }`}
                             placeholder="e.g. Confidential Chart"
@@ -2060,13 +2607,15 @@ function TreeDesignerApp() {
                         </div>
 
                         <div>
-                          <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Footer Subtext</label>
-                          <input
-                            type="text"
+                          <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                            {lang === 'fa' ? 'پیش‌متن / زیرعنوان پاورقی' : 'Footer Subtext'}
+                          </label>
+                          <textarea
+                            rows={3}
                             value={doc.page.footerSubText || ''}
                             onChange={(e) => updatePageConfig({ footerSubText: e.target.value })}
-                            className={`w-full border rounded p-1.5 text-xs transition ${
-                              isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800'
+                            className={`w-full border rounded p-1.5 text-xs transition min-h-[60px] ${
+                              isDark ? 'bg-slate-950/60 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800'
                             }`}
                             placeholder="e.g. © 2026"
                           />
@@ -2077,13 +2626,15 @@ function TreeDesignerApp() {
                             onClick={() => updatePageConfig({ footerTextOffsetX: 0, footerTextOffsetY: 0 })}
                             className="text-[10px] py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-500 rounded transition font-medium cursor-pointer"
                           >
-                            Reset Footer Coordinates
+                            {lang === 'fa' ? 'بازنشانی مختصات پاورقی' : 'Reset Footer Coordinates'}
                           </button>
                         )}
                       </div>
 
                       <div>
-                        <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Built-in Designs / Presets</label>
+                        <label className={`text-[10px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                          {lang === 'fa' ? 'الگوها و پس‌زمینه‌های آماده' : 'Built-in Designs / Presets'}
+                        </label>
                         <select
                           value={BUILTIN_LETTERHEADS.find(b => b.svg === doc.page.footerImage)?.id || (doc.page.footerImage ? 'custom' : 'none')}
                           onChange={(e) => {
@@ -2108,11 +2659,21 @@ function TreeDesignerApp() {
                             isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
                           }`}
                         >
-                          <option value="none">None (Standard Text)</option>
-                          <option value="custom">-- Custom File Upload --</option>
-                          {BUILTIN_LETTERHEADS.map(preset => (
-                            <option key={preset.id} value={preset.id}>{preset.name}</option>
-                          ))}
+                          <option value="none">{lang === 'fa' ? 'بدون طرح (فقط متن استاندارد)' : 'None (Standard Text)'}</option>
+                          <option value="custom">{lang === 'fa' ? '-- بارگذاری تصویر دلخواه --' : '-- Custom File Upload --'}</option>
+                          {BUILTIN_LETTERHEADS.map(preset => {
+                            let displayName = preset.name;
+                            if (lang === 'fa') {
+                              if (preset.id === 'corporate') displayName = 'طرح حاشیه هندسی مدرن (نیلی/قرمز)';
+                              else if (preset.id === 'editorial') displayName = 'طرح لوکس کلاسیک (طلایی/سنگ‌لوح)';
+                              else if (preset.id === 'tech') displayName = 'طرح خطوط مهندسی دقیق (نقشه‌برداری)';
+                              else if (preset.id === 'watercolor') displayName = 'طرح هنری مینیمال موج آب‌رنگی';
+                              else if (preset.id === 'brutalist') displayName = 'طرح نوارهای پررنگ مینی‌مال (مدرنیست)';
+                            }
+                            return (
+                              <option key={preset.id} value={preset.id}>{displayName}</option>
+                            );
+                          })}
                         </select>
                       </div>
 
@@ -2128,11 +2689,15 @@ function TreeDesignerApp() {
 
                       {doc.page.footerImage && (
                         <div className="flex flex-col gap-2 bg-indigo-500/5 dark:bg-white/5 p-2 rounded border border-indigo-500/10 dark:border-white/5 mt-1">
-                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 block">Position & Scale</span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-indigo-500 block">
+                            {lang === 'fa' ? 'تغییر موقعیت و مقیاس تصویر' : 'Position & Scale'}
+                          </span>
                           
                           <div className="grid grid-cols-2 gap-1.5">
                             <div>
-                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Height (px)</label>
+                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {lang === 'fa' ? 'ارتفاع (پیکسل)' : 'Height (px)'}
+                              </label>
                               <input
                                 type="number"
                                 min="20"
@@ -2145,7 +2710,9 @@ function TreeDesignerApp() {
                               />
                             </div>
                             <div>
-                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Fit Mode</label>
+                              <label className={`text-[9px] block mb-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {lang === 'fa' ? 'نحوه انطباق' : 'Fit Mode'}
+                              </label>
                               <select
                                 value={doc.page.footerFit}
                                 onChange={(e) => updatePageConfig({ footerFit: e.target.value as ImageFit })}
@@ -2153,16 +2720,18 @@ function TreeDesignerApp() {
                                   isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
                                 }`}
                               >
-                                <option value="contain">Contain</option>
-                                <option value="cover">Cover</option>
-                                <option value="stretch">Stretch</option>
+                                <option value="contain">{lang === 'fa' ? 'داخل کادر (Contain)' : 'Contain'}</option>
+                                <option value="cover">{lang === 'fa' ? 'پوشش کامل (Cover)' : 'Cover'}</option>
+                                <option value="stretch">{lang === 'fa' ? 'کشش تصویر (Stretch)' : 'Stretch'}</option>
                               </select>
                             </div>
                           </div>
 
                           <div>
                             <div className="flex justify-between text-[9px] mb-0.5">
-                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Zoom Scale</span>
+                              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                {lang === 'fa' ? 'بزرگنمایی تصویر' : 'Zoom Scale'}
+                              </span>
                               <span className="font-mono text-indigo-500">{(doc.page.footerScale ?? 1).toFixed(2)}x</span>
                             </div>
                             <input
@@ -2179,7 +2748,9 @@ function TreeDesignerApp() {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <div className="flex justify-between text-[9px] mb-0.5">
-                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Move X</span>
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                  {lang === 'fa' ? 'جابجایی افقی (X)' : 'Move X'}
+                                </span>
                                 <span className="font-mono text-indigo-500">{doc.page.footerOffsetX ?? 0}px</span>
                               </div>
                               <input
@@ -2194,7 +2765,9 @@ function TreeDesignerApp() {
                             </div>
                             <div>
                               <div className="flex justify-between text-[9px] mb-0.5">
-                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Move Y</span>
+                                <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+                                  {lang === 'fa' ? 'جابجایی عمودی (Y)' : 'Move Y'}
+                                </span>
                                 <span className="font-mono text-indigo-500">{doc.page.footerOffsetY ?? 0}px</span>
                               </div>
                               <input
