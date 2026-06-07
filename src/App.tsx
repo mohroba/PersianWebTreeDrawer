@@ -1096,20 +1096,7 @@ function TreeDesignerApp() {
           </div>
         </div>
 
-        {/* Templates & Reset Actions */}
-        <div className={`flex rounded-lg p-0.5 border items-center overflow-x-auto max-w-[140px] md:max-w-[220px] lg:max-w-none ${
-          isDark ? 'bg-slate-950/40 border-white/5' : 'bg-slate-200/50 border-slate-300'
-        }`}>
-          <button
-            onClick={() => loadTemplate('family')}
-            className={`px-2 py-0.5 md:px-2.5 md:py-1 rounded-md text-[10px] md:text-[11px] font-medium transition-all bg-transparent whitespace-nowrap ${
-              isDark ? 'text-slate-200 hover:bg-white/5' : 'text-slate-800 hover:bg-white/70'
-            }`}
-            title="Load standard genealogy chart template"
-          >
-            {t.familyTree}
-          </button>
-        </div>
+
 
         {/* Global Header actions */}
         <div className="flex items-center gap-1 md:gap-2">
@@ -1394,8 +1381,8 @@ function TreeDesignerApp() {
         
         {/* Outline View Overlay */}
         {showOutline && (
-          <div className="absolute top-0 bottom-0 left-0 w-80 z-20 border-r shadow-2xl bg-white flex flex-col no-print transition-transform transform translate-x-0">
-            <OutlineView />
+          <div className={`absolute top-0 bottom-0 left-0 w-80 z-20 border-r shadow-2xl flex flex-col no-print transition-transform transform translate-x-0 transition-colors duration-300 ${isDark ? 'bg-slate-900 border-white/10 text-white shadow-slate-950/40' : 'bg-white border-slate-200 text-slate-800 shadow-slate-200/40'}`}>
+            <OutlineView isDark={isDark} />
           </div>
         )}
 

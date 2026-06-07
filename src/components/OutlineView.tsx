@@ -4,7 +4,11 @@ import { TreeNode } from '../types';
 import { ChevronRight, ChevronDown, Plus, Trash2, ArrowUp, ArrowDown, ArrowRight, ArrowLeft } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 
-export const OutlineView: React.FC = () => {
+export interface OutlineViewProps {
+  isDark?: boolean;
+}
+
+export const OutlineView: React.FC<OutlineViewProps> = ({ isDark = false }) => {
   const { document: doc, addNode, deleteSelected, selectNode, updateNode, addEdge } = useTree();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -77,14 +81,20 @@ export const OutlineView: React.FC = () => {
 
     return (
       <div key={node.id} className="flex flex-col">
-        <div className="flex items-center gap-1 py-1 hover:bg-slate-100 group rounded pe-2">
+        <div className={`flex items-center gap-1 py-1 group rounded pe-2 transition-colors ${
+          isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100'
+        }`}>
           {/* Indentation */}
           <div style={{ width: `${depth * 20}px` }} className="shrink-0" />
           
           {/* Expand Toggle */}
           <button 
             onClick={() => toggleExpand(node.id)}
-            className={`p-0.5 rounded hover:bg-slate-200 transition ${hasChildren ? 'visible' : 'invisible'}`}
+            className={`p-0.5 rounded transition ${
+              hasChildren ? 'visible' : 'invisible'
+            } ${
+              isDark ? 'hover:bg-white/10 text-slate-400 hover:text-slate-200' : 'hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+            }`}
           >
             {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           </button>
@@ -92,17 +102,39 @@ export const OutlineView: React.FC = () => {
           <input
             value={node.label}
             onChange={(e) => handleUpdateText(node.id, e.target.value)}
-            className="flex-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-indigo-500 focus:bg-white rounded px-1 text-sm py-0.5 outline-none min-w-[100px]"
+            className={`flex-1 bg-transparent border border-transparent rounded px-1 text-sm py-0.5 outline-none min-w-[100px] transition-colors focus:border-indigo-500 ${
+              isDark 
+                ? 'hover:border-white/10 focus:bg-black/40 text-slate-100 placeholder-slate-500' 
+                : 'hover:border-slate-300 focus:bg-white text-slate-800 placeholder-slate-400'
+            }`}
           />
 
           <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-0.5">
-            <button onClick={() => handleAddChild(node.id, node.x, node.y)} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Add Child">
+            <button 
+              onClick={() => handleAddChild(node.id, node.x, node.y)} 
+              className={`p-1 rounded transition-colors ${
+                isDark ? 'hover:bg-white/10 text-slate-400 hover:text-slate-200' : 'hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+              }`} 
+              title="Add Child"
+            >
               <Plus size={12} />
             </button>
-            <button onClick={() => handleAddSibling(node.id)} className="p-1 hover:bg-slate-200 rounded text-slate-600" title="Add Sibling">
+            <button 
+              onClick={() => handleAddSibling(node.id)} 
+              className={`p-1 rounded transition-colors ${
+                isDark ? 'hover:bg-white/10 text-slate-400 hover:text-slate-200' : 'hover:bg-slate-200 text-slate-600 hover:text-slate-900'
+              }`} 
+              title="Add Sibling"
+            >
               <ArrowRight size={12} />
             </button>
-            <button onClick={() => handleDelete(node.id)} className="p-1 hover:bg-red-100 rounded text-red-600" title="Delete">
+            <button 
+              onClick={() => handleDelete(node.id)} 
+              className={`p-1 rounded transition-colors ${
+                isDark ? 'hover:bg-red-950/40 text-red-400 hover:bg-red-900/60' : 'hover:bg-red-100 text-red-600 hover:bg-red-200'
+              }`} 
+              title="Delete"
+            >
               <Trash2 size={12} />
             </button>
           </div>
@@ -114,17 +146,23 @@ export const OutlineView: React.FC = () => {
   };
 
   return (
-    <div className="p-4 bg-white/50 h-full overflow-y-auto">
+    <div className={`p-4 h-full overflow-y-auto transition-colors duration-300 bg-transparent`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-sm text-slate-800">Outline View</h3>
+        <h3 className={`font-semibold text-sm ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
+          {doc?.page?.lang === 'fa' ? 'نمای درختی (ساختار درختی)' : 'Outline View'}
+        </h3>
         <button 
           onClick={() => {
             const newId = uuidv4();
             addNode(100, 100, newId, 'New Root');
           }}
-          className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded hover:bg-indigo-200 flex items-center gap-1"
+          className={`text-xs px-2 py-1 rounded flex items-center gap-1 font-medium transition-colors cursor-pointer ${
+            isDark 
+              ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' 
+              : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+          }`}
         >
-          <Plus size={12} /> Add Root
+          <Plus size={12} /> {doc?.page?.lang === 'fa' ? 'افزودن گره ریشه اصلی' : 'Add Root'}
         </button>
       </div>
 
