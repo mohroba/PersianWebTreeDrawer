@@ -43,6 +43,8 @@ interface TreeContextType {
   
   // Node Actions
   addNode: (x?: number, y?: number, customId?: string, customLabel?: string) => void;
+  addChildNode: (parentId: string, x: number, y: number, label?: string) => void;
+  deleteNodeById: (id: string) => void;
   updateNode: (id: string, updates: Partial<TreeNode>) => void;
   deleteSelected: () => void;
   
@@ -264,8 +266,7 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
       width: 130,
       height: 45,
       fontSize: 12,
-      textAlign: 'center',
-      style: documentRef.current?.page?.defaultNodeStyle || 'rectangle'
+      textAlign: 'center'
     };
 
     setDocumentAndHistory({
@@ -275,6 +276,42 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSelectedNodeIds([newId]);
     setSelectedEdgeIds([]);
   }, [gridSnap, gridSize, setDocumentAndHistory]);
+
+  const addChildNode = useCallback((parentId: string, x: number, y: number, label = 'New Node') => {
+    const newId = `node-${Date.now()}`;
+    const newEdgeId = `edge-${Date.now()}`;
+    const snappedX = gridSnap ? Math.round(x / gridSize) * gridSize : x;
+    const snappedY = gridSnap ? Math.round(y / gridSize) * gridSize : y;
+    const newNode: TreeNode = {
+      id: newId,
+      label,
+      subLabel: '',
+      x: snappedX,
+      y: snappedY,
+      width: 130,
+      height: 45,
+      fontSize: 12,
+      textAlign: 'center'
+    };
+    const newEdge: TreeEdge = { id: newEdgeId, from: parentId, to: newId, type: 'elbow', strokeWidth: 1.5 };
+    setDocumentAndHistory({
+      ...documentRef.current,
+      nodes: [...documentRef.current.nodes, newNode],
+      edges: [...documentRef.current.edges, newEdge]
+    });
+    setSelectedNodeIds([newId]);
+    setSelectedEdgeIds([]);
+  }, [gridSnap, gridSize, setDocumentAndHistory]);
+
+  const deleteNodeById = useCallback((id: string) => {
+    pushToHistory(documentRef.current);
+    setDocumentState((prev) => ({
+      ...prev,
+      nodes: prev.nodes.filter(n => n.id !== id),
+      edges: prev.edges.filter(e => e.from !== id && e.to !== id)
+    }));
+    setSelectedNodeIds(prev => prev.filter(nid => nid !== id));
+  }, [pushToHistory]);
 
   const updateNode = useCallback((id: string, updates: Partial<TreeNode>) => {
     // Note: To avoid committing heavy history frames for high-frequency dragging, 
@@ -590,6 +627,8 @@ export const TreeProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearSelection,
         
         addNode,
+        addChildNode,
+        deleteNodeById,
         updateNode,
         deleteSelected,
         

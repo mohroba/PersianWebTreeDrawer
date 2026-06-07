@@ -2,14 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useTree } from '../context/TreeContext';
 import { TreeNode } from '../types';
 import { ChevronRight, ChevronDown, Plus, Trash2, ArrowUp, ArrowDown, ArrowRight, ArrowLeft } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface OutlineViewProps {
   isDark?: boolean;
 }
 
 export const OutlineView: React.FC<OutlineViewProps> = ({ isDark = false }) => {
-  const { document: doc, addNode, deleteSelected, selectNode, updateNode, addEdge } = useTree();
+  const { document: doc, addNode, addChildNode, deleteNodeById, updateNode } = useTree();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const activeDoc = doc || { nodes: [], edges: [], page: {} };
@@ -42,32 +41,25 @@ export const OutlineView: React.FC<OutlineViewProps> = ({ isDark = false }) => {
   };
 
   const handleAddChild = (parentId: string, parentX: number, parentY: number) => {
-    const newId = uuidv4();
-    addNode(parentX, parentY + 80, newId, 'New Task');
-    addEdge(parentId, newId);
-    setExpanded(prev => new Set(prev).add(parentId)); // expand parent
+    addChildNode(parentId, parentX, parentY + 80, 'New Node');
+    setExpanded(prev => new Set(prev).add(parentId));
   };
 
   const handleAddSibling = (nodeId: string) => {
-    // Find parent
     const parentEdge = activeDoc.edges.find(e => e.to === nodeId);
     if (!parentEdge) {
-      // It's a root, add another root
-      const newId = uuidv4();
       const n = activeDoc.nodes.find(n => n.id === nodeId);
-      addNode((n?.x || 100) + 160, (n?.y || 100), newId, 'New Section');
+      addNode((n?.x || 100) + 160, n?.y || 100);
     } else {
       const parentId = parentEdge.from;
       const parent = activeDoc.nodes.find(n => n.id === parentId);
-      const child = activeDoc.nodes.find(n => n.id === nodeId);
-      handleAddChild(parentId, parent?.x || 100, (child?.y || 100));
+      const sibling = activeDoc.nodes.find(n => n.id === nodeId);
+      addChildNode(parentId, parent?.x || 100, sibling?.y || 100, 'New Node');
     }
   };
 
   const handleDelete = (id: string) => {
-    // Easy way is to select and delete
-    selectNode(id, false);
-    deleteSelected();
+    deleteNodeById(id);
   };
 
   const handleUpdateText = (id: string, text: string) => {
@@ -152,10 +144,7 @@ export const OutlineView: React.FC<OutlineViewProps> = ({ isDark = false }) => {
           {doc?.page?.lang === 'fa' ? 'نمای درختی (ساختار درختی)' : 'Outline View'}
         </h3>
         <button 
-          onClick={() => {
-            const newId = uuidv4();
-            addNode(100, 100, newId, 'New Root');
-          }}
+          onClick={() => addNode(100, 100, undefined, 'New Root')}
           className={`text-xs px-2 py-1 rounded flex items-center gap-1 font-medium transition-colors cursor-pointer ${
             isDark 
               ? 'bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30' 

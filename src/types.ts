@@ -60,6 +60,8 @@ export interface TreeNode {
   subLabel?: string; // Optional for multi-line professional genealogy/org details
   fontFamily?: string;
   fontColor?: string;
+  borderColor?: string;
+  bgColor?: string;
   fontBold?: boolean;
   fontItalic?: boolean;
   fontUnderline?: boolean;

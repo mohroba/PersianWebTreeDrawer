@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, signInWithPopup, GoogleAuthProvider, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  User,
+  signInWithPopup,
+  GoogleAuthProvider,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+} from 'firebase/auth';
 import { doc, onSnapshot, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
@@ -8,6 +17,8 @@ interface AuthContextType {
   coins: number;
   loading: boolean;
   signIn: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<string | null>;
+  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   buyCoins: (amount: number) => Promise<void>;
   deductCoin: () => Promise<boolean>;
@@ -26,13 +37,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // subscribe to user doc
         const userRef = doc(db, 'users', currentUser.uid);
         const unsubDoc = onSnapshot(userRef, (docSnap) => {
           if (docSnap.exists()) {
             setCoins(docSnap.data().coins || 0);
           } else {
-            // init user doc
             setDoc(userRef, { coins: 10, email: currentUser.email, displayName: currentUser.displayName })
               .catch(e => console.error("Error creating user doc", e));
           }
@@ -60,6 +69,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const signInWithEmail = async (email: string, password: string): Promise<string | null> => {
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      return null;
+    } catch (e: any) {
+      return e.message as string;
+    }
+  };
+
+  const signUpWithEmail = async (email: string, password: string, displayName: string): Promise<string | null> => {
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      if (displayName) await updateProfile(cred.user, { displayName });
+      const userRef = doc(db, 'users', cred.user.uid);
+      await setDoc(userRef, { coins: 10, email: cred.user.email, displayName });
+      return null;
+    } catch (e: any) {
+      return e.message as string;
+    }
+  };
+
   const signOut = async () => {
     await firebaseSignOut(auth);
   };
@@ -68,10 +98,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
     try {
-      await setDoc(userRef, { 
+      await setDoc(userRef, {
         coins: increment(amount),
         email: user.email,
-        displayName: user.displayName 
+        displayName: user.displayName
       }, { merge: true });
     } catch (e) {
       console.error("Error buying coins", e);
@@ -92,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, coins, loading, signIn, signOut, buyCoins, deductCoin }}>
+    <AuthContext.Provider value={{ user, coins, loading, signIn, signInWithEmail, signUpWithEmail, signOut, buyCoins, deductCoin }}>
       {children}
     </AuthContext.Provider>
   );

@@ -245,7 +245,24 @@ function TreeDesignerApp() {
     setCurrentProjectId
   } = useTree();
 
-  const { user, coins, loading, signIn, signOut, buyCoins, deductCoin } = useAuth();
+  const { user, coins, loading, signIn, signInWithEmail, signUpWithEmail, signOut, buyCoins, deductCoin } = useAuth();
+
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const handleEmailAuth = async () => {
+    setAuthError(null);
+    setAuthLoading(true);
+    const err = authMode === 'login'
+      ? await signInWithEmail(authEmail, authPassword)
+      : await signUpWithEmail(authEmail, authPassword, authName);
+    setAuthLoading(false);
+    if (err) setAuthError(err);
+  };
 
   const canvasRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -495,46 +512,97 @@ function TreeDesignerApp() {
   }
 
   if (!user) {
+    const isFa = lang === 'fa';
     return (
-      <div 
-        dir={lang === 'fa' ? 'rtl' : 'ltr'} 
+      <div
+        dir={isFa ? 'rtl' : 'ltr'}
         className={`min-h-screen flex items-center justify-center font-sans transition-colors duration-300 p-4 ${isDark ? 'bg-slate-950 text-slate-200' : 'bg-slate-100 text-slate-800'}`}
       >
         <div className={`max-w-md w-full rounded-2xl border p-8 shadow-2xl transition-all duration-300 ${isDark ? 'bg-slate-900 border-white/10' : 'bg-white border-slate-200'}`}>
           <div className="flex flex-col items-center text-center">
-            {/* Logo aspect */}
             <div className={`p-4 rounded-2xl border mb-5 ${isDark ? 'bg-indigo-600/10 border-indigo-500/20 text-indigo-400' : 'bg-indigo-50 border-indigo-200 text-indigo-600'}`}>
               <Sparkles className="w-12 h-12 stroke-[1.5] animate-pulse" />
             </div>
-            
-            <h1 className="text-2xl font-black tracking-tight mb-2">
-              {lang === 'fa' ? 'طراح شجره‌نامه Rabook' : 'Rabook TreeSketch'}
+            <h1 className="text-2xl font-black tracking-tight mb-1">
+              {isFa ? 'طراح شجره‌نامه Rabook' : 'Rabook TreeSketch'}
             </h1>
             <p className="text-xs font-semibold uppercase tracking-wider text-indigo-500 mb-6">
-              {lang === 'fa' ? 'نرم‌افزار یکپارچه شجره‌نامه و نمودار درختی' : 'All-in-One Family Tree & Diagram Builder'}
+              {isFa ? 'نرم‌افزار یکپارچه شجره‌نامه و نمودار درختی' : 'All-in-One Family Tree & Diagram Builder'}
             </p>
 
-            <div className={`w-full p-4 rounded-xl border text-sm text-right mb-6 select-text space-y-2 leading-relaxed ${isDark ? 'bg-slate-950/40 border-white/5 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
-              <p className="font-semibold text-xs uppercase tracking-wider text-amber-500 text-center">
-                {lang === 'fa' ? 'ورود الزامی است' : 'Authentication Required'}
-              </p>
-              <p className="text-center text-xs leading-6">
-                {lang === 'fa' 
-                  ? 'جهت طراحی شجره‌نامه، ذخیره‌سازی ابری پروژه‌ها، خروجی‌های نامحدود، مدیریت سکه‌ها و دسترسی به تمام ابزارهای Rabook، ورود به حساب کاربری گوگل الزامی می‌باشد.' 
-                  : 'To design family trees, auto-save projects securely in the cloud, export unlimited files, and access all editing features, please sign in with your Google Account.'}
-              </p>
+            {/* Login / Register tabs */}
+            <div className={`flex w-full rounded-xl border mb-5 overflow-hidden text-xs font-bold ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+              <button
+                onClick={() => { setAuthMode('login'); setAuthError(null); }}
+                className={`flex-1 py-2.5 transition cursor-pointer ${authMode === 'login' ? 'bg-indigo-600 text-white' : isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                {isFa ? 'ورود' : 'Sign In'}
+              </button>
+              <button
+                onClick={() => { setAuthMode('register'); setAuthError(null); }}
+                className={`flex-1 py-2.5 transition cursor-pointer ${authMode === 'register' ? 'bg-indigo-600 text-white' : isDark ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+              >
+                {isFa ? 'ثبت‌نام' : 'Register'}
+              </button>
+            </div>
+
+            {/* Email/password form */}
+            <div className="w-full space-y-3 mb-4" dir="ltr">
+              {authMode === 'register' && (
+                <input
+                  type="text"
+                  placeholder={isFa ? 'نام نمایشی' : 'Display Name'}
+                  value={authName}
+                  onChange={e => setAuthName(e.target.value)}
+                  className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition ${isDark ? 'bg-slate-800 border-white/10 text-slate-200 placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400'}`}
+                />
+              )}
+              <input
+                type="email"
+                placeholder={isFa ? 'ایمیل' : 'Email'}
+                value={authEmail}
+                onChange={e => setAuthEmail(e.target.value)}
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition ${isDark ? 'bg-slate-800 border-white/10 text-slate-200 placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400'}`}
+              />
+              <input
+                type="password"
+                placeholder={isFa ? 'رمز عبور' : 'Password'}
+                value={authPassword}
+                onChange={e => setAuthPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleEmailAuth()}
+                className={`w-full rounded-xl border px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 transition ${isDark ? 'bg-slate-800 border-white/10 text-slate-200 placeholder-slate-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400'}`}
+              />
+            </div>
+
+            {authError && (
+              <p className="text-xs text-red-400 mb-3 text-center px-2">{authError}</p>
+            )}
+
+            <button
+              onClick={handleEmailAuth}
+              disabled={authLoading}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold py-3 px-6 rounded-xl transition cursor-pointer shadow-lg shadow-indigo-600/20 text-sm mb-4"
+            >
+              {authLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
+              <span>{authMode === 'login' ? (isFa ? 'ورود' : 'Sign In') : (isFa ? 'ثبت‌نام' : 'Create Account')}</span>
+            </button>
+
+            <div className="w-full flex items-center gap-3 mb-4">
+              <span className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+              <span className="text-xs text-slate-400 font-semibold">{isFa ? 'یا' : 'OR'}</span>
+              <span className={`flex-1 h-px ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
             </div>
 
             <button
               onClick={signIn}
-              className="w-full flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-6 rounded-xl transition cursor-pointer shadow-lg shadow-indigo-600/20 text-sm"
+              className={`w-full flex items-center justify-center gap-2.5 border font-bold py-3 px-6 rounded-xl transition cursor-pointer text-sm ${isDark ? 'border-white/10 hover:bg-white/5 text-slate-300' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}
             >
-              <LogIn className="w-5 h-5" />
-              <span>{lang === 'fa' ? 'ورود با حساب کاربری گوگل' : 'Sign in with Google Account'}</span>
+              <svg className="w-4 h-4" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+              <span>{isFa ? 'ورود با حساب گوگل' : 'Continue with Google'}</span>
             </button>
-            
-            <div className="mt-4 flex items-center gap-2">
-              <button 
+
+            <div className="mt-4">
+              <button
                 onClick={() => setLang(lang === 'fa' ? 'en' : 'fa')}
                 className="text-[10px] text-slate-400 hover:text-indigo-500 font-bold transition"
               >
@@ -2286,30 +2354,57 @@ function TreeDesignerApp() {
                      <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                        {lang === 'fa' ? 'خانواده فونت' : 'Font Family'}
                      </label>
-                     <input
-                        type="text"
-                        placeholder={lang === 'fa' ? 'مثال: بی نازنین، تاهوما...' : 'e.g. B Nazanin, Tahoma...'}
-                        value={selectedNode.fontFamily || ''}
-                        onChange={(e) => updateNode(selectedNode.id, { fontFamily: e.target.value })}
-                        className={`w-full border rounded-md p-2 text-xs transition ${
-                          isDark ? 'bg-slate-950 border-white/10 text-white placeholder-slate-500' : 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
-                        }`}
-                     />
+                     <select
+                       value={selectedNode.fontFamily || ''}
+                       onChange={(e) => updateNode(selectedNode.id, { fontFamily: e.target.value || undefined })}
+                       className={`w-full border rounded-md p-2 text-xs transition ${
+                         isDark ? 'bg-slate-950 border-white/10 text-white' : 'bg-white border-slate-300 text-slate-800 font-medium'
+                       }`}
+                     >
+                       <option value="">{lang === 'fa' ? 'پیش‌فرض صفحه' : 'Page Default'}</option>
+                       <option value="Tahoma">Tahoma</option>
+                       <option value="B Nazanin">B Nazanin / Nazanin</option>
+                       <option value="Vazir">Vazir</option>
+                       <option value="Fira Code">Fira Code</option>
+                       <option value="JetBrains Mono">JetBrains Mono</option>
+                       <option value="Courier New">Courier New</option>
+                     </select>
                   </div>
 
-                  <div>
-                     <label className={`text-[11px] block mb-1 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                       {lang === 'fa' ? 'رنگ نوشته' : 'Text Color'}
-                     </label>
-                     <div className="flex gap-2 items-center">
-                        <input
-                           type="color"
-                           value={selectedNode.fontColor || '#000000'}
-                           onChange={(e) => updateNode(selectedNode.id, { fontColor: e.target.value })}
-                           className="w-8 h-8 rounded cursor-pointer border-none bg-transparent"
-                        />
-                        <span className="text-xs font-mono text-slate-500">{selectedNode.fontColor || '#000000'}</span>
-                     </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className={`text-[9px] block mb-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'قاب' : 'Border'}
+                      </label>
+                      <input
+                        type="color"
+                        value={selectedNode.borderColor || doc.page.defaultNodeColor || '#000000'}
+                        onChange={(e) => updateNode(selectedNode.id, { borderColor: e.target.value })}
+                        className="w-full h-8 rounded-md cursor-pointer border border-slate-300 bg-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className={`text-[9px] block mb-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'زمینه' : 'Fill'}
+                      </label>
+                      <input
+                        type="color"
+                        value={selectedNode.bgColor || doc.page.defaultNodeBgColor || '#ffffff'}
+                        onChange={(e) => updateNode(selectedNode.id, { bgColor: e.target.value })}
+                        className="w-full h-8 rounded-md cursor-pointer border border-slate-300 bg-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className={`text-[9px] block mb-1 truncate ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+                        {lang === 'fa' ? 'نوشته' : 'Text'}
+                      </label>
+                      <input
+                        type="color"
+                        value={selectedNode.fontColor || doc.page.defaultNodeTextColor || '#000000'}
+                        onChange={(e) => updateNode(selectedNode.id, { fontColor: e.target.value })}
+                        className="w-full h-8 rounded-md cursor-pointer border border-slate-300 bg-transparent"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

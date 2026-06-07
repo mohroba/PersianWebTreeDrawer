@@ -58,8 +58,8 @@ export const NodeElement: React.FC<NodeElementProps> = ({
 
   const pageDefaults = document.page;
   const nodeStyle = node.style || pageDefaults.defaultNodeStyle || 'rectangle';
-  const nodeBorderColor = pageDefaults.defaultNodeColor || '#000000';
-  const nodeBgColor = pageDefaults.defaultNodeBgColor || '#ffffff';
+  const nodeBorderColor = node.borderColor || pageDefaults.defaultNodeColor || '#000000';
+  const nodeBgColor = node.bgColor || pageDefaults.defaultNodeBgColor || '#ffffff';
   const nodeTextColor = node.fontColor || pageDefaults.defaultNodeTextColor || '#000000';
   const fontFam = node.fontFamily || pageDefaults.defaultFontFamily || 'inherit';
 
@@ -113,7 +113,7 @@ export const NodeElement: React.FC<NodeElementProps> = ({
           <rect
             width={node.width}
             height={node.height}
-            fill="transparent"
+            fill={nodeBgColor}
             stroke="none"
           />
         );
